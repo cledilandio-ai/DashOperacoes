@@ -1,62 +1,38 @@
-# 📋 Plano de Continuação — DashOperacoes (Módulo Indústria)
-> Última atualização: 2026-02-20
+# 🎯 DashOperacoes — Plano de Continuidade
+> Última atualização: 2026-03-13
 
-> **INSTRUÇÃO:** Todas as respostas, explicações, planos e comentários devem ser estritamente em **Português do Brasil (pt-BR)**. Mesmo que os termos técnicos do código sejam em inglês, a explicação deve ser em português.
+## ✅ Progresso do Dia
+*   **Limpeza Total**: Módulos de Frota e Motoristas removidos (arquivos deletados, rotas limpas no `App.jsx`).
+*   **Foco na Fábrica**: Projeto configurado para Produção, Manutenção, Ativos e Expedição.
+*   **Polimento de Interface**:
+    *   `Sidebar.jsx` agora exibe usuário logado e possui logout funcional.
+    *   `Login.jsx` redireciona perfis `TECNICO` e `OPERADOR` para seus apps mobile corretamente.
+    *   `ProtectedRoute.jsx` agora aceita o perfil `EXPEDICAO`.
+*   **Automação Anti-Pause**:
+    *   Script `keep-alive.mjs` validado e rodando com histórico de pings (INSERT).
+    *   GitHub Actions configurado e testado (Success ✅).
+*   **Produção**: Deploy realizado na Vercel com sucesso, incluindo `vercel.json` para suporte a rotas SPA.
 
----
+## 📋 Status Atual do Banco de Dados
+*   Tabela `keep_alive_log` criada com auto-incremento (ID Identity).
+*   Estrutura de `operadores` estável (Admin/1234).
 
-## ✅ O Que Já Foi Feito
+## 🚀 Próximos Passos Sugeridos (Próxima Sessão)
 
-| Item | Status |
-|---|---|
-| Tabelas criadas no Supabase (`setores`, `equipamentos`, `manutencoes`) | ✅ |
-| Colunas adicionadas em `maquinas` (`setor_id`, `tag`, `horas_uso_diario`) | ✅ |
-| `ManutencaoProvider` adicionado ao `App.jsx` | ✅ |
-| `ErrorBoundary` criado e adicionado ao `App.jsx` | ✅ |
-| React Rules of Hooks corrigidos em `Ativos.jsx` e `Manutencao.jsx` | ✅ |
-| `ProtectedRoute` corrigido: `user.perfil` → `user.funcao` (mapeamento `Gerente→GESTOR`) | ✅ |
-| `IndustriaContext`: só busca após login, queries separadas (sem join com equipamentos) | ✅ |
-| `ManutencaoContext`: simplificado, só busca `manutencoes` com join `maquinas(nome)` | ✅ |
-| `ProducaoContext`: adicionado `useAuth`, busca e Realtime só após login | ✅ |
-| RLS policies criadas para todas as novas tabelas | ✅ |
-| Usuário `admin` verificado no banco (funcao: `Gerente`, id: 5) | ✅ |
+### 1. 🏗️ Módulo Ativos Indústria
+*   Cadastrar os equipamentos reais do cliente para alimentar o sistema.
+*   Vincular máquinas aos seus respectivos setores.
 
----
+### 2. 🔧 Módulo Manutenção (TPM)
+*   Testar o fluxo completo do Kanban: Criar OS -> Iniciar Execução (via TecnicoApp) -> Finalizar.
+*   Implementar visualização de detalhes da OS ao clicar no Card do Kanban.
 
-## ✅ Problema Resolvido
+### 3. 📦 Módulo Expedição
+*   Integrar o `Estoque.jsx` (que foi mantido) com as funcionalidades de saída de mercadoria.
 
-**Tela branca** nas páginas `/ativos` e `/admin/manutencao` após login.
-**Solução Aplicada:**
-1. Remoção de importações inválidas (`produits` e `addVeiculo`) em componentes auxiliares que travavam o renderizador do React Router (Vite).
-2. O `MainLayout.jsx` foi corrigido para injetar `{children || <Outlet />}` corretamente.
+### 📊 KPIs e Análises
+*   Desenvolver no `Analista.jsx` os gráficos de produção baseados nos pesos (kg) lançados pelos operadores.
 
----
-
-## 🎯 Próximos Passos (em ordem)
-
-### PASSO 1 - Cadastrar Máquinas
-1. "Ativos Indústria" → "Novo Ativo" → preencher nome/setor/tag → salvar
-2. Verificar se as máquinas estão aparecendo listadas e configuradas corretamente.
-
-### PASSO 2 - Testar Fluxo de O.S. (Ordem de Serviço)
-1. "Manutenção (TPM)" → "Nova O.S." → selecionar máquina
-2. Verificar se o card cai na coluna correta do Kanban
-3. Movimentar a O.S. pelas etapas (Aberta -> Em Execução -> Concluída).
-
-## 📁 Arquivos Modificados
-
-| Arquivo | Descrição |
-|---|---|
-| `src/contexts/IndustriaContext.jsx` | Reescrito completo |
-| `src/contexts/ManutencaoContext.jsx` | Reescrito completo |
-| `src/contexts/ProducaoContext.jsx` | +useAuth, +user dependency, cleanup melhorado |
-| `src/pages/Ativos.jsx` | Hooks corrigidos + modal "Novo Ativo" |
-| `src/pages/Manutencao.jsx` | Reescrito completo |
-| `src/components/ProtectedRoute.jsx` | funcao + mapeamento de roles |
-| `src/components/ErrorBoundary.jsx` | **Novo** |
-| `src/App.jsx` | +ManutencaoProvider, +ErrorBoundary |
-| `CRIAR_TABELAS_AGORA.sql` | **Novo** — já rodado no Supabase ✅ |
-
-## � Links Úteis
-- **SQL Editor Supabase:** https://supabase.com/dashboard/project/upernlulsbswchlcjqkr/sql/new
-- **Dev server:** `npm run dev` na pasta `DashOperacoes`
+## 🔑 Credenciais para Lembrete
+*   **Login**: `admin`
+*   **Senha**: `1234`

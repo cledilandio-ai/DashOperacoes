@@ -1,0 +1,29 @@
+name: Keep Alive — Supabase Anti-Pause
+
+on:
+  schedule:
+    - cron: '0 9 * * *'   # Diariamente às 09:00 UTC (06:00 Brasília)
+  workflow_dispatch:        # Execução manual pela aba Actions do GitHub
+
+jobs:
+  ping:
+    name: Ping Supabase
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout do repositório
+        uses: actions/checkout@v4
+
+      - name: Configurar Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Instalar dependências
+        run: npm ci --omit=dev
+
+      - name: Executar Keep-Alive
+        run: node keep-alive.mjs
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}

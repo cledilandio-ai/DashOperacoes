@@ -1,0 +1,52 @@
+Automação Supabase Keep Alive (Anti-Pause)
+Use este prompt sempre que quiser configurar o sistema de "Keep Alive" em um novo projeto Next.js hospedado na Vercel com banco de dados Supabase (nível Gratuito).
+
+O Prompt
+Copie e cole o texto abaixo no chat da sua IA de programação.
+IMPORTANTE: Antes de enviar, substitua [SUA_URL_PRODUCAO] pela URL real do seu projeto (ex: https://meu-projeto.vercel.app).
+
+---
+
+Preciso configurar uma automação para impedir que meu projeto Supabase (nível gratuito) seja pausado por inatividade.
+
+Por favor, faça o seguinte:
+
+1. Crie uma rota de API segura em `app/api/keep-alive/route.ts` que faça uma escrita simples no banco de dados (ex: atualizar um timestamp em uma tabela de configurações ou logs) para contar como atividade.
+
+2. Crie um arquivo de Workflow do GitHub Actions em `.github/workflows/keep-alive.yml`.
+
+3. Configure esse workflow para rodar DIARIAMENTE (cron: '0 9 * * *') e também permitir execução manual (workflow_dispatch).
+
+4. O workflow deve fazer um `curl` na seguinte URL do meu projeto:
+   URL: [SUA_URL_PRODUCAO]/api/keep-alive
+   (Certifique-se de configurar a URL correta no arquivo yaml).
+
+5. Me lembre de quais tabelas eu preciso criar ou se preciso configurar alguma variável de ambiente.
+
+---
+
+Passos Manuais (Para você lembrar)
+Após a IA criar os códigos, você precisará fazer apenas isso:
+
+1. Fazer o Push do código para o GitHub.
+2. Ir no GitHub Actions (aba do repositório).
+3. Confirmar que o workflow apareceu.
+4. Rodar manualmente uma vez para testar e validar se a URL está correta.
+
+Detalhes Técnicos (Referência)
+
+1. A Rota API (app/api/keep-alive/route.ts)
+Deve aceitar GET ou POST e fazer um UPDATE ou INSERT no banco. Apenas "ler" dados não conta como atividade para o Supabase.
+
+2. O Workflow (.github/workflows/keep-alive.yml)
+name: Keep Alive Supabase
+on:
+  schedule:
+    - cron: '0 9 * * *' # Diariamente às 09:00 UTC
+  workflow_dispatch:
+jobs:
+  ping:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Call API Keep Alive
+        run: curl -I -X GET "[SUA_URL_PRODUCAO]/api/keep-alive"

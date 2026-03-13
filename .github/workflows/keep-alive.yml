@@ -5,6 +5,10 @@ on:
     - cron: '0 9 * * *'   # Diariamente às 09:00 UTC (06:00 Brasília)
   workflow_dispatch:        # Execução manual pela aba Actions do GitHub
 
+# Tenta forçar as ações a usarem Node 24 para silenciar avisos de depreciação
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
 jobs:
   ping:
     name: Ping Supabase
@@ -26,5 +30,5 @@ jobs:
       - name: Executar Keep-Alive
         run: node keep-alive.mjs
         env:
-          DATABASE_URL: ${{ secrets.DATABASE_URL }}
-          FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+          VITE_SUPABASE_URL: ${{ secrets.VITE_SUPABASE_URL || 'https://upernlulsbswchlcjqkr.supabase.co' }}
+          VITE_SUPABASE_ANON_KEY: ${{ secrets.VITE_SUPABASE_ANON_KEY || 'sb_publishable_H9bx1dVuclKRyMkR5jKlFw_3x18BX6h' }}

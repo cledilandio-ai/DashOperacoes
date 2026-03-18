@@ -1,0 +1,80 @@
+{
+  "setores": [
+    {
+      "id": 5,
+      "nome": "Geral",
+      "responsavel": "Administracao",
+      "criado_em": "2026-02-09T19:50:44.162347+00:00",
+      "pai_id": null,
+      "tipo": "SETOR",
+      "descricao": null,
+      "ordem": 0
+    },
+    {
+      "id": 15,
+      "nome": "CAFÉ",
+      "responsavel": null,
+      "criado_em": "2026-03-16T12:18:20.090601+00:00",
+      "pai_id": null,
+      "tipo": "GALPAO",
+      "descricao": "",
+      "ordem": 0
+    },
+    {
+      "id": 17,
+      "nome": "TORRA",
+      "responsavel": null,
+      "criado_em": "2026-03-16T12:23:43.726941+00:00",
+      "pai_id": 15,
+      "tipo": "SETOR",
+      "descricao": "AMBIENTE DOS TORRADORES",
+      "ordem": 0
+    },
+    {
+      "id": 16,
+      "nome": "CAFÉ CRU",
+      "responsavel": null,
+      "criado_em": "2026-03-16T12:18:49.550837+00:00",
+      "pai_id": 15,
+      "tipo": "SETOR",
+      "descricao": "ESTOQUE DE CAFÉ CRU",
+      "ordem": 0
+    }
+  ],
+  "maquinas": [
+    {
+      "id": 4,
+      "nome": "EFV01",
+      "setor": "Empacotamento",
+      "created_at": "2026-02-09T13:25:34.95652+00:00",
+      "setor_id": null,
+      "criticidade": "B",
+      "codigo_qr": null,
+      "horimetro_atual": 0,
+      "status_atual": "DISPONIVEL",
+      "modelo": null,
+      "fabricante": null,
+      "tag": null,
+      "horas_uso_diario": 8,
+      "descricao": null,
+      "ano_fabricacao": null
+    },
+    {
+      "id": 5,
+      "nome": "EFV02",
+      "setor": "Empacotamento",
+      "created_at": "2026-02-09T13:25:52.135375+00:00",
+      "setor_id": null,
+      "criticidade": "B",
+      "codigo_qr": null,
+      "horimetro_atual": 0,
+      "status_atual": "DISPONIVEL",
+      "modelo": null,
+      "fabricante": null,
+      "tag": null,
+      "horas_uso_diario": 8,
+      "descricao": null,
+      "ano_fabricacao": null
+    }
+  ]
+}

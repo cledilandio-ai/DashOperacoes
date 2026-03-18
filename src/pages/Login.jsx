@@ -33,7 +33,10 @@ const Login = () => {
             switch (perfilUsuario) {
                 case 'ADMIN':
                 case 'GESTOR':
-                    navigate('/admin');
+                    // Se o Admin escolheu a aba de Produção ou Manutenção, leva ele pra lá
+                    if (mode === 'PRODUCAO') navigate('/producao');
+                    else if (mode === 'MANUTENCAO') navigate('/tecnico');
+                    else navigate('/admin');
                     break;
                 case 'TECNICO':
                     navigate('/tecnico');   // App mobile do técnico
@@ -41,7 +44,11 @@ const Login = () => {
                 case 'EXPEDICAO':
                     navigate('/expedicao');
                     break;
-                default: // OPERADOR
+                case 'PRODUCAO':
+                case 'OPERADOR':
+                    navigate('/producao');
+                    break;
+                default:
                     navigate('/producao');
             }
         } else {

@@ -17,7 +17,6 @@ export const IndustriaProvider = ({ children }) => {
     const fetchArvore = async () => {
         setLoading(true);
         try {
-            // Queries SEPARADAS - evita erro de FK join 400
             const [resSetores, resMaquinas, resEquip] = await Promise.all([
                 supabase.from('setores').select('*').order('nome'),
                 supabase.from('maquinas').select('*').order('nome'),
@@ -26,7 +25,7 @@ export const IndustriaProvider = ({ children }) => {
 
             if (resSetores.error) console.error('Erro setores:', resSetores.error.message);
             if (resMaquinas.error) console.error('Erro maquinas:', resMaquinas.error.message);
-            if (resEquip.error) console.warn('Equipamentos (pode nao existir ainda):', resEquip.error.message);
+            if (resEquip.error) console.warn('Equipamentos:', resEquip.error.message);
 
             setSetores(resSetores.data || []);
             setMaquinas(resMaquinas.data || []);
@@ -39,7 +38,6 @@ export const IndustriaProvider = ({ children }) => {
         }
     };
 
-    // Só busca quando o usuário estiver autenticado (evita 401/400 sem auth)
     useEffect(() => {
         if (user) {
             fetchArvore();
@@ -51,6 +49,94 @@ export const IndustriaProvider = ({ children }) => {
         }
     }, [user]);
 
+    // ── SETORES ─────────────────────────────────────────────────
+
+    /** Converte texto para maiúsculo de forma segura */
+    const toUpper = (str) => (str && typeof str === 'string') ? str.toUpperCase().trim() : str;
+
+    /** Aplica toUpper em campos de texto de um objeto */
+    const upperFields = (obj, campos) => {
+        const result = { ...obj };
+        campos.forEach(c => { if (result[c] !== undefined) result[c] = toUpper(result[c]); });
+        return result;
+    };
+
+    /** Adiciona um nó na árvore (Galpão, Setor ou Sub-setor) */
+    const addSetor = async ({ nome, tipo = 'SETOR', pai_id = null, descricao = '' }) => {
+        const payload = upperFields({ nome, tipo, pai_id: pai_id || null, descricao }, ['nome', 'descricao']);
+        const { data, error } = await supabase
+            .from('setores')
+            .insert([payload])
+            .select()
+            .single();
+
+        if (!error && data) {
+            await fetchArvore();
+        }
+        return { data, error };
+    };
+
+    /** Edita nome, tipo ou descrição de um setor existente */
+    const updateSetor = async (id, dados) => {
+        const payload = upperFields(dados, ['nome', 'descricao']);
+        const { data, error } = await supabase
+            .from('setores')
+            .update(payload)
+            .eq('id', id)
+            .select()
+            .single();
+
+        if (!error && data) {
+            setSetores(prev => prev.map(s => s.id === id ? { ...s, ...data } : s));
+        }
+        return { data, error };
+    };
+
+    /** Remove um setor (ON DELETE CASCADE remove os filhos no banco) */
+    const deleteSetor = async (id) => {
+        const { error } = await supabase.from('setores').delete().eq('id', id);
+        if (!error) {
+            // Remove o nó e todos os seus filhos da memória de uma vez
+            await fetchArvore();
+        }
+        return { error };
+    };
+
+    // ── MÁQUINAS ─────────────────────────────────────────────────
+
+    const addMaquina = async (dados) => {
+        const payload = upperFields(dados, ['nome', 'modelo', 'tag', 'fabricante', 'descricao']);
+        const { data, error } = await supabase
+            .from('maquinas')
+            .insert([payload])
+            .select()
+            .single();
+
+        if (!error) fetchArvore();
+        return { data, error };
+    };
+
+    const updateMaquina = async (id, dados) => {
+        const payload = upperFields(dados, ['nome', 'modelo', 'tag', 'fabricante', 'descricao']);
+        const { data, error } = await supabase
+            .from('maquinas')
+            .update(payload)
+            .eq('id', id)
+            .select()
+            .single();
+
+        if (!error && data) {
+            await fetchArvore();
+        }
+        return { data, error };
+    };
+
+    const deleteMaquina = async (id) => {
+        const { error } = await supabase.from('maquinas').delete().eq('id', id);
+        if (!error) setMaquinas(prev => prev.filter(m => m.id !== id));
+        return { error };
+    };
+
     const updateHorimetro = async (maquinaId, novoHoras) => {
         const { error } = await supabase
             .from('maquinas')
@@ -59,6 +145,55 @@ export const IndustriaProvider = ({ children }) => {
         if (!error) fetchArvore();
         return { error };
     };
+
+    // ── EQUIPAMENTOS ─────────────────────────────────────────────
+
+    const addEquipamento = async (dados) => {
+        const payload = upperFields(dados, ['nome', 'descricao', 'tag', 'fabricante', 'modelo']);
+        const { data, error } = await supabase
+            .from('equipamentos')
+            .insert([payload])
+            .select()
+            .single();
+
+        if (!error && data) {
+            await fetchArvore();
+        }
+        return { data, error };
+    };
+
+    const updateEquipamento = async (id, dados) => {
+        const payload = upperFields(dados, ['nome', 'descricao', 'tag', 'fabricante', 'modelo']);
+        const { data, error } = await supabase
+            .from('equipamentos')
+            .update(payload)
+            .eq('id', id)
+            .select()
+            .single();
+
+        if (!error && data) {
+            await fetchArvore();
+        }
+        return { data, error };
+    };
+
+    const deleteEquipamento = async (id) => {
+        const { error } = await supabase.from('equipamentos').delete().eq('id', id);
+        if (!error) await fetchArvore();
+        return { error };
+    };
+
+    /** Atalho para desmontar (levar para estoque) */
+    const desmontarEquipamento = async (id) => {
+        return updateEquipamento(id, { maquina_id: null });
+    };
+
+    /** Atalho para montar em uma máquina */
+    const montarEquipamento = async (id, maquinaId) => {
+        return updateEquipamento(id, { maquina_id: maquinaId });
+    };
+
+    // ── OS ───────────────────────────────────────────────────────
 
     const criarOSIndustria = async (dados) => {
         const payload = {
@@ -71,37 +206,19 @@ export const IndustriaProvider = ({ children }) => {
         return { error };
     };
 
-    const addSetor = async (nome) => {
-        const { data, error } = await supabase
-            .from('setores')
-            .insert([{ nome }])
-            .select()
-            .single();
-
-        if (!error && data) {
-            setSetores(prev => [...prev, data].sort((a, b) => a.nome.localeCompare(b.nome)));
-        }
-        return { data, error };
-    };
-
-    const addMaquina = async (dados) => {
-        const { data, error } = await supabase
-            .from('maquinas')
-            .insert([dados])
-            .select()
-            .single();
-
-        if (!error) {
-            fetchArvore();
-        }
-        return { data, error };
-    };
-
     return (
         <IndustriaContext.Provider value={{
             setores, maquinas, equipamentos, loading,
-            fetchArvore, updateHorimetro, criarOSIndustria,
-            addSetor, addMaquina
+            fetchArvore,
+            // Setores
+            addSetor, updateSetor, deleteSetor,
+            // Máquinas
+            addMaquina, updateMaquina, deleteMaquina, updateHorimetro,
+            // Equipamentos
+            addEquipamento, updateEquipamento, deleteEquipamento,
+            desmontarEquipamento, montarEquipamento,
+            // OS
+            criarOSIndustria,
         }}>
             {children}
         </IndustriaContext.Provider>

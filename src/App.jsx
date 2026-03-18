@@ -6,6 +6,7 @@ import { AuthProvider } from './contexts/AuthContext';
 import { ProducaoProvider } from './contexts/ProducaoContext';
 import { IndustriaProvider } from './contexts/IndustriaContext';
 import { ManutencaoProvider } from './contexts/ManutencaoContext';
+import { ConfiguracoesProvider } from './contexts/ConfiguracoesContext';
 
 /* PÁGINAS */
 import Login from './pages/Login';
@@ -15,6 +16,7 @@ import Analista from './pages/Analista';
 import Ativos from './pages/Ativos';
 import Expedicao from './pages/Expedicao';
 import Manutencao from './pages/Manutencao';
+import Configuracoes from './pages/Configuracoes';
 
 /* APPS MOBILE (chão de fábrica e técnicos) */
 import ProducaoApp from './pages/mobile/ProducaoApp';
@@ -30,10 +32,11 @@ function App() {
     <ErrorBoundary>
       <BrowserRouter>
         <AuthProvider>
-          <ProducaoProvider>
-            <IndustriaProvider>
-              <ManutencaoProvider>
-                <Routes>
+          <ConfiguracoesProvider>
+            <ProducaoProvider>
+              <IndustriaProvider>
+                <ManutencaoProvider>
+                  <Routes>
 
                   {/* ROTA PÚBLICA */}
                   <Route path="/login" element={<Login />} />
@@ -79,18 +82,25 @@ function App() {
                     </ProtectedRoute>
                   } />
 
+                  {/* MÓDULO CONFIGURAÇÕES (ADMIN & GESTOR) */}
+                  <Route path="/configuracoes" element={
+                    <ProtectedRoute allowedRoles={['ADMIN', 'GESTOR']}>
+                      <MainLayout><Configuracoes /></MainLayout>
+                    </ProtectedRoute>
+                  } />
+
                   {/* APPS OPERACIONAIS (mobile / sem sidebar) */}
 
                   {/* App Chão de Fábrica (Operadores) */}
                   <Route path="/producao" element={
-                    <ProtectedRoute allowedRoles={['OPERADOR', 'ADMIN']}>
+                    <ProtectedRoute allowedRoles={['OPERADOR', 'PRODUCAO', 'ADMIN', 'GESTOR']}>
                       <ProducaoApp />
                     </ProtectedRoute>
                   } />
 
                   {/* App Técnico de Manutenção */}
                   <Route path="/tecnico" element={
-                    <ProtectedRoute allowedRoles={['TECNICO', 'ADMIN']}>
+                    <ProtectedRoute allowedRoles={['TECNICO', 'ADMIN', 'GESTOR']}>
                       <TecnicoApp />
                     </ProtectedRoute>
                   } />
@@ -99,9 +109,10 @@ function App() {
                   <Route path="*" element={<Navigate to="/login" replace />} />
 
                 </Routes>
-              </ManutencaoProvider>
-            </IndustriaProvider>
-          </ProducaoProvider>
+                </ManutencaoProvider>
+              </IndustriaProvider>
+            </ProducaoProvider>
+          </ConfiguracoesProvider>
         </AuthProvider>
       </BrowserRouter>
     </ErrorBoundary>

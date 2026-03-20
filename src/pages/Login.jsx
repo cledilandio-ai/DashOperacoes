@@ -1,36 +1,39 @@
 import React, { useState } from 'react';
 import { useAuth } from '../contexts/AuthContext';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useLocation } from 'react-router-dom';
 import { Lock, User, Factory, Wrench, ShieldCheck, AlertCircle } from 'lucide-react';
 
 const Login = () => {
     const { login } = useAuth();
     const navigate = useNavigate();
-
+    const location = useLocation();
+    
     // Perfil selecionado pelo usuário (Visual)
     const [mode, setMode] = useState('PRODUCAO'); // PRODUCAO | MANUTENCAO | GESTOR
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState('');
-
+    
     // Formulário
     const [formData, setFormData] = useState({ user: '', pass: '' });
-
+    
     const handleSubmit = async (e) => {
         e.preventDefault();
         setError('');
         setLoading(true);
-
+        
         // Tenta logar independende da aba (para simplificar UX)
         // O backend/banco já valida se é user/senha corretos
         const res = await login(formData.user, formData.pass);
-
+        
         if (res.success) {
             const perfilUsuario = res.user.perfil;
             
             // Verifica se há uma página de origem salva no estado do roteador (ex: vindo de um QR Code)
-            const from = window.history.state?.usr?.from?.pathname + (window.history.state?.usr?.from?.search || '');
-            if (from && from !== '/login') {
-                navigate(from, { replace: true });
+            const fromPath = location.state?.from?.pathname;
+            const fromSearch = location.state?.from?.search || '';
+            
+            if (fromPath && fromPath !== '/login') {
+                navigate(fromPath + fromSearch, { replace: true });
                 return;
             }
 

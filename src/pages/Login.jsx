@@ -25,10 +25,14 @@ const Login = () => {
         const res = await login(formData.user, formData.pass);
 
         if (res.success) {
-            const perfilUsuario = res.user.perfil; // ADMIN, TECNICO, OPERADOR...
-
-            // Validação visual opcional: Se o cara clicou na aba MANUTENÇÃO mas é OPERADOR, avisa ou redireciona pro certo?
-            // Vamos redirecionar para o certo sempre, ignorando a aba, pela inteligência.
+            const perfilUsuario = res.user.perfil;
+            
+            // Verifica se há uma página de origem salva no estado do roteador (ex: vindo de um QR Code)
+            const from = window.history.state?.usr?.from?.pathname + (window.history.state?.usr?.from?.search || '');
+            if (from && from !== '/login') {
+                navigate(from, { replace: true });
+                return;
+            }
 
             switch (perfilUsuario) {
                 case 'ADMIN':

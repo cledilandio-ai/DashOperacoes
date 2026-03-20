@@ -20,13 +20,22 @@
 *   Tabela `configuracoes_empresa` atualizada com campo `url_sistema`.
 *   Tabela `operadores` preparada para campos `login` e `senha` opcionais.
 
-## 🚀 Próximos Passos
-### 1. 🛠️ Validação de Produção
-*   O usuário deve executar `manutencao/GarantirConfigDB.sql` no Supabase para ativar as novas configurações.
-*   Testar a impressão de etiquetas em papel adesivo/térmico para validar o enquadramento.
+## 🚀 Próximos Passos (Pendências Mobile e Melhorias)
 
-### 2. 📊 Relatórios de Produtividade
-*   Revisar o cálculo de produtividade baseada no divisor de cada produto nos relatórios individuais.
+### 1. 📱 Ajustes no App Mobile (`ProducaoApp.jsx`)
+*   **Câmera/QR Code**: Corrigir ícone de QR Code que não abre a câmera no celular.
+*   **Fluxo de Login**: Garantir que o acesso via QR Code externo exija login se não houver sessão ativa.
+*   **Lançamento de Produção**: 
+    *   Remover "T Técnicos" da lista de produtividade de máquina (apenas Operadores).
+    *   Capturar automaticamente o usuário logado como responsável pelo lançamento.
+    *   Simplificar campos: mostrar apenas "Operador" e "Quantidade" (o resto já é pré-definido).
+
+### 2. 🛠️ Módulo de Manutenção Mobile
+*   **Abertura de O.S.**: Investigar erro ao abrir O.S. pelo celular.
+*   **Campos Faltantes**: Adicionar campo "Mecânico Líder" na visualização mobile.
+
+### 2. 🧪 Testes de Validação
+*   Testar a impressão de etiquetas em papel adesivo/térmico para validar o enquadramento.
 
 ## 🔑 Credenciais para Lembrete
 *   **Admin**: `admin` / `1234`

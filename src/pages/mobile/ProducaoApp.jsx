@@ -25,7 +25,8 @@ const ProducaoApp = () => {
     const [osForm, setOsForm] = useState({
         maquina_id: '',
         descricao: '',
-        prioridade: 'MEDIA'
+        prioridade: 'MEDIA',
+        tecnico_id: null
     });
 
     // Detectar parâmetro do QR Code
@@ -130,8 +131,17 @@ const ProducaoApp = () => {
                         <QrCode className="w-16 h-16" />
                     </div>
                     <div className="text-center">
-                        <h2 className="text-xl font-bold text-slate-800">Ler QR Code</h2>
-                        <p className="text-slate-500 text-sm">Abrir OS na Máquina</p>
+                        <label className="cursor-pointer">
+                            <h2 className="text-xl font-bold text-slate-800">Ler QR Code</h2>
+                            <p className="text-slate-500 text-sm">Abrir OS na Máquina</p>
+                            <input 
+                                type="file" 
+                                accept="image/*" 
+                                capture="environment" 
+                                className="hidden" 
+                                onChange={(e) => alert("Escaneamento nativo em desenvolvimento. Por favor, use a câmera do celular diretamente para ler a etiqueta.")}
+                            />
+                        </label>
                     </div>
                 </button>
 
@@ -206,25 +216,35 @@ const ProducaoApp = () => {
                         </div>
 
                         <form onSubmit={handleLancar} className="space-y-4">
-                            <div>
-                                <label className="block text-sm font-bold text-slate-700 mb-1">Quem está operando?</label>
-                                <select
-                                    className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl font-bold text-slate-700"
-                                    value={operadorId}
-                                    onChange={e => setOperadorId(e.target.value)}
-                                    required
-                                >
-                                    <option value="">Selecione o Operador...</option>
-                                    {/* Adiciona o usuário logado como primeira opção se ele for operador */}
-                                    <option value={user.id}>EU ({user.nome})</option>
-                                    <hr />
-                                    {operadores?.filter(op => op.id !== user.id).map(op => (
-                                        <option key={op.id} value={op.id}>
-                                            {op.nome} {op.turno ? `(${op.turno})` : ''} - {op.funcao}
-                                        </option>
-                                    ))}
-                                </select>
-                            </div>
+                            {/* Seleção de Operador - Apenas para ADMIN/GESTOR */}
+                            {(user.perfil === 'ADMIN' || user.perfil === 'GESTOR') ? (
+                                <div>
+                                    <label className="block text-sm font-bold text-slate-700 mb-1">Quem realizou a produção?</label>
+                                    <select
+                                        className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl font-bold text-slate-700"
+                                        value={operadorId || user.id}
+                                        onChange={e => setOperadorId(e.target.value)}
+                                        required
+                                    >
+                                        <option value={user.id}>EU ({user.nome})</option>
+                                        <hr />
+                                        {operadores?.filter(op => 
+                                            op.id !== user.id && 
+                                            op.funcao?.toUpperCase() !== 'TECNICO' &&
+                                            op.perfil?.toUpperCase() !== 'TECNICO'
+                                        ).map(op => (
+                                            <option key={op.id} value={op.id}>
+                                                {op.nome} {op.turno ? `(${op.turno})` : ''}
+                                            </option>
+                                        ))}
+                                    </select>
+                                </div>
+                            ) : (
+                                <div className="bg-blue-50 p-3 rounded-xl border border-blue-100 flex items-center justify-between">
+                                    <span className="text-xs font-bold text-blue-800 uppercase">Operador Logado:</span>
+                                    <span className="text-sm font-black text-blue-600 truncate max-w-[150px]">{user.nome}</span>
+                                </div>
+                            )}
 
                             <div>
                                 <label className="block text-sm font-bold text-slate-700 mb-1">Máquina / Linha</label>
@@ -241,19 +261,22 @@ const ProducaoApp = () => {
                                 </select>
                             </div>
 
-                            <div>
-                                <label className="block text-sm font-bold text-slate-700 mb-1">Produto (Opcional)</label>
-                                <select
-                                    className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl font-bold text-slate-700"
-                                    value={produtoId}
-                                    onChange={e => setProdutoId(e.target.value)}
-                                >
-                                    <option value="">Geral / Indefinido</option>
-                                    {produtos?.map(p => (
-                                        <option key={p.id} value={p.id}>{p.nome}</option>
-                                    ))}
-                                </select>
-                            </div>
+                            {/* Produto auto-selecionado (oculto se já definido pela máquina) */}
+                            {(!produtoId || (user.perfil === 'ADMIN' || user.perfil === 'GESTOR')) && (
+                                <div>
+                                    <label className="block text-sm font-bold text-slate-700 mb-1">Produto</label>
+                                    <select
+                                        className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl font-bold text-slate-700 text-sm"
+                                        value={produtoId}
+                                        onChange={e => setProdutoId(e.target.value)}
+                                    >
+                                        <option value="">Geral / Indefinido</option>
+                                        {produtos?.map(p => (
+                                            <option key={p.id} value={p.id}>{p.nome}</option>
+                                        ))}
+                                    </select>
+                                </div>
+                            )}
 
                             <div>
                                 <label className="block text-sm font-bold text-slate-700 mb-1">Quantidade</label>
@@ -284,8 +307,8 @@ const ProducaoApp = () => {
                 <div className="fixed inset-0 bg-black/50 z-[100] flex items-end sm:items-center justify-center p-0 sm:p-4">
                     <div className="bg-white w-full sm:max-w-md rounded-t-2xl sm:rounded-2xl p-6 animate-in slide-in-from-bottom-10">
                         <div className="flex justify-between items-center mb-6">
-                            <h3 className="text-xl font-bold text-slate-800 flex items-center gap-2">
-                                <AlertTriangle className="w-5 h-5 text-amber-500" /> Nova O.S. (Quebra)
+                            <h3 className="text-xl font-bold text-red-600 flex items-center gap-2">
+                                <AlertTriangle className="w-5 h-5" /> Abrir Chamado (Quebra)
                             </h3>
                             <button onClick={() => setModalOSOpen(false)} className="p-2 bg-slate-100 rounded-full text-slate-500">
                                 <X className="w-5 h-5" />
@@ -293,6 +316,22 @@ const ProducaoApp = () => {
                         </div>
 
                         <form onSubmit={handleAbrirOS} className="space-y-4">
+                            <div>
+                                <label className="block text-sm font-bold text-slate-700 mb-1">Mecânico Líder (Opcional)</label>
+                                <select
+                                    className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl font-bold text-slate-700"
+                                    value={osForm.tecnico_id || ''}
+                                    onChange={e => setOsForm({ ...osForm, tecnico_id: e.target.value ? parseInt(e.target.value) : null })}
+                                >
+                                    <option value="">Selecione o Mecânico Responsável...</option>
+                                    {operadores?.filter(op => 
+                                        op.funcao?.toUpperCase() === 'TECNICO' || 
+                                        op.perfil?.toUpperCase() === 'TECNICO'
+                                    ).map(op => (
+                                        <option key={op.id} value={op.id}>{op.nome}</option>
+                                    ))}
+                                </select>
+                            </div>
                             <div>
                                 <label className="block text-sm font-bold text-slate-700 mb-1">Máquina / Equipamento</label>
                                 <select

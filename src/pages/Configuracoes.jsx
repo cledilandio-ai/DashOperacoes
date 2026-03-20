@@ -10,6 +10,7 @@ const Configuracoes = () => {
         endereco: '',
         telefone: '',
         email: '',
+        url_sistema: '',
         logo_base64: ''
     });
     const [saving, setSaving] = useState(false);
@@ -23,6 +24,7 @@ const Configuracoes = () => {
                 endereco: config.endereco || '',
                 telefone: config.telefone || '',
                 email: config.email || '',
+                url_sistema: config.url_sistema || '',
                 logo_base64: config.logo_base64 || ''
             });
         }
@@ -45,7 +47,7 @@ const Configuracoes = () => {
         const { error } = await salvarConfig(formData);
         setSaving(false);
         if (error) {
-            alert("Erro ao salvar configurações!");
+            alert("Erro ao salvar: " + error.message);
         } else {
             alert("Configurações salvas com sucesso!");
         }
@@ -81,6 +83,17 @@ const Configuracoes = () => {
                     </h2>
                     
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <div className="md:col-span-2 bg-blue-50/50 p-4 rounded-lg border border-blue-100 mb-2">
+                            <label className="text-[10px] font-bold text-blue-600 uppercase tracking-widest mb-1 block">URL Oficial do Sistema (Vercel)</label>
+                            <input 
+                                type="url" 
+                                className="input-field bg-white border-blue-200 focus:ring-blue-500 font-mono text-sm" 
+                                value={formData.url_sistema} 
+                                onChange={e => setFormData({...formData, url_sistema: e.target.value.toLowerCase()})} 
+                                placeholder="https://seu-projeto.vercel.app" 
+                            />
+                            <p className="text-[10px] text-blue-400 mt-1 italic">Esta URL será usada para a geração de QR Codes em etiquetas.</p>
+                        </div>
                         <div>
                             <label className="label">Nome da Empresa</label>
                             <input type="text" className="input-field" value={formData.nome_empresa} onChange={e => setFormData({...formData, nome_empresa: e.target.value})} placeholder="Ex: Indústria XYZ Ltda" />

@@ -17,6 +17,7 @@ import Ativos from './pages/Ativos';
 import Expedicao from './pages/Expedicao';
 import Manutencao from './pages/Manutencao';
 import Configuracoes from './pages/Configuracoes';
+import Relatorios from './pages/Relatorios';
 
 /* APPS MOBILE (chão de fábrica e técnicos) */
 import ProducaoApp from './pages/mobile/ProducaoApp';
@@ -86,6 +87,13 @@ function App() {
                   <Route path="/configuracoes" element={
                     <ProtectedRoute allowedRoles={['ADMIN', 'GESTOR']}>
                       <MainLayout><Configuracoes /></MainLayout>
+                    </ProtectedRoute>
+                  } />
+
+                  {/* RELATÓRIOS */}
+                  <Route path="/relatorios" element={
+                    <ProtectedRoute allowedRoles={['ADMIN', 'GESTOR']}>
+                      <MainLayout><Relatorios /></MainLayout>
                     </ProtectedRoute>
                   } />
 

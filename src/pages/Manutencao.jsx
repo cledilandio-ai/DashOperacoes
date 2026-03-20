@@ -1,4 +1,30 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
+
+// ───────────────────────────────────────────────
+// Hook: Cronômetro em tempo real para cada OS
+// ───────────────────────────────────────────────
+const useCronometro = (dataAbertura, prazoHoras, statusOS) => {
+    const [tick, setTick] = useState(0);
+    useEffect(() => {
+        if (statusOS === 'CONCLUIDA' || statusOS === 'CANCELADA') return;
+        const id = setInterval(() => setTick(t => t + 1), 1000);
+        return () => clearInterval(id);
+    }, [statusOS]);
+
+    if (!dataAbertura) return { display: '--:--:--', totalHoras: 0, ultrapassouSLA: false, cor: 'slate' };
+
+    const ms = Date.now() - new Date(dataAbertura).getTime();
+    const totalSegundos = Math.floor(ms / 1000);
+    const totalHoras = ms / 3600000;
+    const h = Math.floor(totalSegundos / 3600);
+    const m = Math.floor((totalSegundos % 3600) / 60);
+    const s = totalSegundos % 60;
+    const display = `${String(h).padStart(2,'0')}:${String(m).padStart(2,'0')}:${String(s).padStart(2,'0')}`;
+    const porcentagem = prazoHoras ? (totalHoras / prazoHoras) : 0;
+    const ultrapassouSLA = prazoHoras ? totalHoras > prazoHoras : false;
+    const cor = ultrapassouSLA ? 'red' : porcentagem > 0.7 ? 'amber' : 'emerald';
+    return { display, totalHoras, ultrapassouSLA, cor, h, m, s };
+};
 import { useManutencao } from '../contexts/ManutencaoContext';
 import { useIndustria } from '../contexts/IndustriaContext';
 import { useProducao } from '../contexts/ProducaoContext';
@@ -7,7 +33,7 @@ import { useAuth } from '../contexts/AuthContext';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import {
     Wrench, AlertTriangle, CheckCircle, Clock, Plus,
-    Activity, Calendar, User, MoreVertical, Printer, Timer, Database
+    Activity, Calendar, User, MoreVertical, Printer, Timer, Database, Search, Package
 } from 'lucide-react';
 import SearchSelect from '../components/SearchSelect';
 
@@ -46,6 +72,9 @@ const Manutencao = () => {
     const [justificativaAtraso, setJustificativaAtraso] = useState('');
     const [novoStatusOS, setNovoStatusOS] = useState('');
     const [anotacoesConclusao, setAnotacoesConclusao] = useState('');
+    const [corrigirSLA, setCorrigirSLA] = useState(false); // Toggle: corrigir prazo para o tempo real decorrido
+    const [buscaOS, setBuscaOS] = useState(''); // Pesquisa textual
+    const [filtroColuna, setFiltroColuna] = useState(null); // null = todas | 'PENDENTE' | 'EM_ANDAMENTO' | 'CONCLUIDA'
 
     // Estado para Filtro da nova Aba de Relatórios
     const [filtroRelatorio, setFiltroRelatorio] = useState({ dataInicio: '', dataFim: '', status: 'TODOS' });
@@ -114,6 +143,7 @@ const Manutencao = () => {
         setNovoStatusOS(os.status !== 'CONCLUIDA' ? 'CONCLUIDA' : os.status);
         setJustificativaAtraso(os.justificativa_atraso || '');
         setAnotacoesConclusao(os.anotacoes_conclusao || '');
+        setCorrigirSLA(false); // Sempre reseta ao abrir
         setModalUpdateOpen(true);
     };
 
@@ -122,10 +152,22 @@ const Manutencao = () => {
             const osId = location.state.reabrirOS;
             const osToOpen = manutencoes.find(m => m.id === osId);
             if (osToOpen) {
-                // Clear state so it doesn't open again on page refresh
+                // Restaurar dados do formulário que o usuário digitou antes de navegar
+                const anotacoesRestauradas = location.state.anotacoes || osToOpen.anotacoes_conclusao || '';
+                const justifRestaurada = location.state.justificativa || osToOpen.justificativa_atraso || '';
+                const corrigirSLARestaurado = location.state.corrigirSLA ?? false;
+
+                // Limpa o state para não reabrir em refresh
                 navigate('/manutencao', { replace: true, state: {} });
-                // We use setTimeout to ensure all initial states are processed before opening the modal
-                setTimeout(() => handleAbrirUpdateModal(osToOpen), 100);
+
+                setTimeout(() => {
+                    setUpdateOSDados(osToOpen);
+                    setNovoStatusOS(osToOpen.status !== 'CONCLUIDA' ? 'CONCLUIDA' : osToOpen.status);
+                    setJustificativaAtraso(justifRestaurada);
+                    setAnotacoesConclusao(anotacoesRestauradas);
+                    setCorrigirSLA(corrigirSLARestaurado);
+                    setModalUpdateOpen(true);
+                }, 100);
             }
         }
     }, [location.state?.reabrirOS, manutencoes.length, navigate]);
@@ -143,6 +185,12 @@ const Manutencao = () => {
             payload.data_conclusao = new Date().toISOString();
             payload.justificativa_atraso = justificativaAtraso;
             payload.anotacoes_conclusao = anotacoesConclusao;
+
+            // ✅ Correção de SLA: admin absorve o tempo real como novo prazo, zerando o atraso
+            if (corrigirSLA && updateOSDados.data_abertura) {
+                const horasReais = (Date.now() - new Date(updateOSDados.data_abertura).getTime()) / 3600000;
+                payload.prazo_limite_horas = Math.ceil(horasReais); // arredonda pra cima (ex: 42.2h → 43h)
+            }
         }
         
         const { error } = await atualizarStatusOS(updateOSDados.id, novoStatusOS, payload);
@@ -169,12 +217,40 @@ const Manutencao = () => {
         return { texto: 'text-emerald-600', bg: 'bg-emerald-50', alerta: null };
     };
 
+    // Sub-componente isolado para o badge cronômetro do card (precisa de estado próprio)
+    const CronometroCardBadge = ({ os }) => {
+        const crono = useCronometro(os.data_abertura, os.prazo_limite_horas, os.status);
+        const bgMap = { red: 'bg-red-50 border border-red-200', amber: 'bg-amber-50 border border-amber-200', emerald: 'bg-emerald-50 border border-emerald-200' };
+        const txtMap = { red: 'text-red-700', amber: 'text-amber-600', emerald: 'text-emerald-600' };
+        const diffHoras = Math.abs(crono.totalHoras - os.prazo_limite_horas).toFixed(1);
+        const diffLabel = crono.ultrapassouSLA
+            ? <span className="text-red-600 font-black animate-pulse">+{diffHoras}h ⚠</span>
+            : <span className="opacity-70">-{diffHoras}h</span>;
+        return (
+            <span
+                className={`ml-1 px-1.5 py-0.5 rounded text-[10px] flex items-center gap-1 font-mono ${bgMap[crono.cor]} ${txtMap[crono.cor]} font-bold`}
+                title={`SLA: ${os.prazo_limite_horas}H | Decorrido: ${crono.display}`}
+            >
+                <Timer size={10} className="shrink-0" />
+                <span className="opacity-60 font-semibold">SLA {os.prazo_limite_horas}H</span>
+                <span className="opacity-30">|</span>
+                <span className={crono.ultrapassouSLA ? 'text-red-600 animate-pulse' : ''}>{crono.display}</span>
+                {diffLabel}
+            </span>
+        );
+    };
+
     const OSCard = ({ os }) => {
         const controlePrazo = calcularCoresAtraso(os);
+        const isFechada = os.status === 'CONCLUIDA' || os.status === 'CANCELADA';
 
         return (
-            <div className={`bg-white p-4 rounded-xl shadow-sm hover:shadow-md transition-all relative group cursor-pointer border ${controlePrazo.borda || 'border-slate-200'}`}
-                onClick={() => handleAbrirUpdateModal(os)}
+            <div className={`bg-white p-4 rounded-xl shadow-sm transition-all relative group border ${
+                isFechada
+                    ? 'border-slate-200 opacity-80'
+                    : `hover:shadow-md cursor-pointer ${controlePrazo.borda || 'border-slate-200'}`
+            }`}
+                onClick={() => !isFechada && handleAbrirUpdateModal(os)}
             >
                 <div className="flex justify-between items-start mb-2">
                     <span className={`text-[10px] font-bold px-2 py-0.5 rounded border ${priorityColor[os.prioridade] || 'bg-slate-100 text-slate-600'}`}>
@@ -190,9 +266,12 @@ const Manutencao = () => {
                     <Clock className="w-3 h-3" />
                     <span>{os.data_abertura ? new Date(os.data_abertura).toLocaleDateString('pt-BR') : '-'}</span>
                     
-                    {os.prazo_limite_horas && (
-                        <span className={`ml-2 px-1.5 rounded ${controlePrazo.bg} ${controlePrazo.texto} font-bold flex items-center gap-1`} title="Prazo Alvo">
-                            <Timer size={10} /> {os.prazo_limite_horas}H
+                    {os.prazo_limite_horas && os.status !== 'CONCLUIDA' && (
+                        <CronometroCardBadge os={os} controlePrazo={controlePrazo} />
+                    )}
+                    {os.prazo_limite_horas && os.status === 'CONCLUIDA' && (
+                        <span className="ml-2 px-1.5 rounded bg-slate-100 text-slate-500 font-bold flex items-center gap-1">
+                            <Timer size={10} /> SLA {os.prazo_limite_horas}H
                         </span>
                     )}
 
@@ -202,13 +281,44 @@ const Manutencao = () => {
                         </span>
                     )}
                 </div>
+
+                {/* Botão de reimprimir para OS fechadas */}
+                {isFechada && (
+                    <button
+                        type="button"
+                        onClick={(e) => { e.stopPropagation(); setOsImpressao(os); }}
+                        className="mt-2 w-full flex items-center justify-center gap-1.5 text-[11px] font-bold text-slate-500 bg-slate-50 hover:bg-slate-100 border border-slate-200 rounded-lg py-1.5 transition-colors"
+                    >
+                        <Printer size={12} /> Reimprimir OS
+                    </button>
+                )}
             </div>
         );
     };
 
-    const osFiltradas = (status) => manutencoes
-        .filter(m => m.status === status)
-        .filter(m => filtroTipo === 'TODOS' || m.tipo === filtroTipo);
+    // Filtragem central: tipo + coluna + busca textual (nome, TAG, descrição)
+    const osVisiveis = (statusList) => {
+        const statuses = Array.isArray(statusList) ? statusList : [statusList];
+        const termo = buscaOS.trim().toLowerCase();
+        return manutencoes
+            .filter(m => statuses.includes(m.status))
+            .filter(m => filtroTipo === 'TODOS' || m.tipo === filtroTipo)
+            .filter(m => {
+                if (!termo) return true;
+                const nome = (m.maquinas?.nome || '').toLowerCase();
+                const tag = (m.maquinas?.tag || '').toLowerCase();
+                const desc = (m.descricao_problema || m.descricao || '').toLowerCase();
+                const id = String(m.id || '');
+                return nome.includes(termo) || tag.includes(termo) || desc.includes(termo) || id.includes(termo);
+            })
+            .sort((a, b) => b.id - a.id); // decrescente: mais recentes primeiro
+    };
+
+    // Ativa/desativa filtro de coluna ao clicar no header
+    const toggleFiltroColuna = (col) => setFiltroColuna(prev => prev === col ? null : col);
+
+    // Visibilidade das colunas
+    const colunaVisivel = (col) => filtroColuna === null || filtroColuna === col;
 
     if (loadingManut) {
         return (
@@ -399,67 +509,135 @@ const Manutencao = () => {
                 </div>
             </div>
 
-            {/* Filtro de Tipo */}
-            <div className="flex gap-2 border-b border-slate-200 overflow-x-auto pb-1">
-                {['TODOS', 'CORRETIVA', 'PREVENTIVA'].map(tipo => (
-                    <button
-                        key={tipo}
-                        onClick={() => setFiltroTipo(tipo)}
-                        className={`px-4 py-2 text-sm font-bold rounded-t-lg transition-colors whitespace-nowrap
-                            ${filtroTipo === tipo ? 'bg-white text-blue-600 border border-b-0 border-slate-200' : 'text-slate-500 hover:text-slate-700 bg-slate-50'}`}
-                    >
-                        {tipo === 'TODOS' ? 'Visão Geral' : tipo}
-                    </button>
-                ))}
+            {/* Filtro de Tipo + Barra de Pesquisa */}
+            <div className="flex flex-col md:flex-row items-stretch md:items-center gap-3 border-b border-slate-200 pb-3">
+                {/* Tabs de tipo */}
+                <div className="flex gap-1">
+                    {['TODOS', 'CORRETIVA', 'PREVENTIVA'].map(tipo => (
+                        <button
+                            key={tipo}
+                            onClick={() => setFiltroTipo(tipo)}
+                            className={`px-4 py-2 text-sm font-bold rounded-lg transition-colors whitespace-nowrap
+                                ${filtroTipo === tipo ? 'bg-blue-600 text-white shadow-sm' : 'text-slate-500 hover:text-slate-700 bg-slate-100 hover:bg-slate-200'}`}
+                        >
+                            {tipo === 'TODOS' ? 'Visão Geral' : tipo}
+                        </button>
+                    ))}
+                </div>
+
+                {/* Campo de pesquisa — padrão SearchSelect da skill */}
+                <div className="relative flex-1 min-w-[220px]">
+                    <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
+                    <input
+                        type="text"
+                        className="input-field pl-9 pr-8"
+                        placeholder="🔍 Pesquisar por máquina, TAG ou descrição..."
+                        value={buscaOS}
+                        onChange={e => setBuscaOS(e.target.value)}
+                    />
+                    {buscaOS && (
+                        <button
+                            type="button"
+                            onClick={() => setBuscaOS('')}
+                            className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 font-bold text-sm"
+                        >✕</button>
+                    )}
+                </div>
             </div>
 
             {/* Kanban */}
             <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+
+                {/* ── Coluna Pendentes ── */}
+                {colunaVisivel('PENDENTE') && (
                 <div className="space-y-3">
-                    <h3 className="font-bold text-slate-600 flex items-center gap-2">
-                        <div className="w-2 h-2 rounded-full bg-slate-400"></div> Pendentes
-                        <span className="ml-auto text-xs bg-slate-100 px-2 py-0.5 rounded-full">{osFiltradas('PENDENTE').length}</span>
-                    </h3>
+                    <button
+                        type="button"
+                        onClick={() => toggleFiltroColuna('PENDENTE')}
+                        className={`w-full font-bold flex items-center gap-2 px-3 py-2 rounded-lg transition-all text-left ${
+                            filtroColuna === 'PENDENTE'
+                                ? 'bg-slate-700 text-white shadow-md'
+                                : 'text-slate-600 bg-slate-100 hover:bg-slate-200'
+                        }`}
+                    >
+                        <div className={`w-2 h-2 rounded-full shrink-0 ${filtroColuna === 'PENDENTE' ? 'bg-white' : 'bg-slate-400'}`}></div>
+                        Pendentes
+                        <span className={`ml-auto text-xs px-2 py-0.5 rounded-full font-black ${
+                            filtroColuna === 'PENDENTE' ? 'bg-white/20 text-white' : 'bg-slate-200 text-slate-600'
+                        }`}>{osVisiveis('PENDENTE').length}</span>
+                        {filtroColuna === 'PENDENTE' && <span className="text-[10px] opacity-70">✕ limpar</span>}
+                    </button>
                     <div className="space-y-3 min-h-[200px]">
-                        {osFiltradas('PENDENTE').map(os => <OSCard key={os.id} os={os} />)}
-                        {osFiltradas('PENDENTE').length === 0 && (
+                        {osVisiveis('PENDENTE').map(os => <OSCard key={os.id} os={os} />)}
+                        {osVisiveis('PENDENTE').length === 0 && (
                             <div className="text-center py-8 border-2 border-dashed border-slate-100 rounded-xl text-slate-300 text-sm">
-                                Sem pendências 👍
+                                {buscaOS ? `Nenhuma OS encontrada para "${buscaOS}"` : 'Sem pendências 👍'}
                             </div>
                         )}
                     </div>
                 </div>
+                )}
 
+                {/* ── Coluna Em Execução ── */}
+                {colunaVisivel('EM_ANDAMENTO') && (
                 <div className="space-y-3">
-                    <h3 className="font-bold text-blue-600 flex items-center gap-2">
-                        <div className="w-2 h-2 rounded-full bg-blue-500 animate-pulse"></div> Em Execução
-                        <span className="ml-auto text-xs bg-blue-50 text-blue-600 px-2 py-0.5 rounded-full">
-                            {manutencoes.filter(m => ['EM_ANDAMENTO', 'AGUARDANDO_PECA'].includes(m.status)).length}
-                        </span>
-                    </h3>
+                    <button
+                        type="button"
+                        onClick={() => toggleFiltroColuna('EM_ANDAMENTO')}
+                        className={`w-full font-bold flex items-center gap-2 px-3 py-2 rounded-lg transition-all text-left ${
+                            filtroColuna === 'EM_ANDAMENTO'
+                                ? 'bg-blue-600 text-white shadow-md'
+                                : 'text-blue-600 bg-blue-50 hover:bg-blue-100'
+                        }`}
+                    >
+                        <div className={`w-2 h-2 rounded-full shrink-0 animate-pulse ${filtroColuna === 'EM_ANDAMENTO' ? 'bg-white' : 'bg-blue-500'}`}></div>
+                        Em Execução
+                        <span className={`ml-auto text-xs px-2 py-0.5 rounded-full font-black ${
+                            filtroColuna === 'EM_ANDAMENTO' ? 'bg-white/20 text-white' : 'bg-blue-100 text-blue-600'
+                        }`}>{osVisiveis(['EM_ANDAMENTO', 'AGUARDANDO_PECA']).length}</span>
+                        {filtroColuna === 'EM_ANDAMENTO' && <span className="text-[10px] opacity-70">✕ limpar</span>}
+                    </button>
                     <div className="space-y-3 min-h-[200px]">
-                        {manutencoes
-                            .filter(m => ['EM_ANDAMENTO', 'AGUARDANDO_PECA'].includes(m.status))
-                            .filter(m => filtroTipo === 'TODOS' || m.tipo === filtroTipo)
-                            .map(os => <OSCard key={os.id} os={os} />)
-                        }
-                    </div>
-                </div>
-
-                <div className="space-y-3">
-                    <h3 className="font-bold text-emerald-600 flex items-center gap-2">
-                        <div className="w-2 h-2 rounded-full bg-emerald-500"></div> Concluídas
-                        <span className="ml-auto text-xs bg-emerald-50 text-emerald-600 px-2 py-0.5 rounded-full">{stats.concluidas}</span>
-                    </h3>
-                    <div className="space-y-3 min-h-[200px]">
-                        {osFiltradas('CONCLUIDA').slice(0, 5).map(os => <OSCard key={os.id} os={os} />)}
-                        {osFiltradas('CONCLUIDA').length === 0 && (
-                            <div className="text-center py-8 border-2 border-dashed border-slate-100 rounded-xl text-slate-300 text-sm">
-                                Nenhuma concluída ainda
+                        {osVisiveis(['EM_ANDAMENTO', 'AGUARDANDO_PECA']).map(os => <OSCard key={os.id} os={os} />)}
+                        {osVisiveis(['EM_ANDAMENTO', 'AGUARDANDO_PECA']).length === 0 && (
+                            <div className="text-center py-8 border-2 border-dashed border-blue-50 rounded-xl text-slate-300 text-sm">
+                                {buscaOS ? `Nenhuma OS encontrada para "${buscaOS}"` : 'Nenhuma em execução'}
                             </div>
                         )}
                     </div>
                 </div>
+                )}
+
+                {/* ── Coluna Concluídas ── */}
+                {colunaVisivel('CONCLUIDA') && (
+                <div className="space-y-3">
+                    <button
+                        type="button"
+                        onClick={() => toggleFiltroColuna('CONCLUIDA')}
+                        className={`w-full font-bold flex items-center gap-2 px-3 py-2 rounded-lg transition-all text-left ${
+                            filtroColuna === 'CONCLUIDA'
+                                ? 'bg-emerald-600 text-white shadow-md'
+                                : 'text-emerald-600 bg-emerald-50 hover:bg-emerald-100'
+                        }`}
+                    >
+                        <div className={`w-2 h-2 rounded-full shrink-0 ${filtroColuna === 'CONCLUIDA' ? 'bg-white' : 'bg-emerald-500'}`}></div>
+                        Concluídas
+                        <span className={`ml-auto text-xs px-2 py-0.5 rounded-full font-black ${
+                            filtroColuna === 'CONCLUIDA' ? 'bg-white/20 text-white' : 'bg-emerald-100 text-emerald-600'
+                        }`}>{osVisiveis('CONCLUIDA').length}</span>
+                        {filtroColuna === 'CONCLUIDA' && <span className="text-[10px] opacity-70">✕ limpar</span>}
+                    </button>
+                    <div className="space-y-3 min-h-[200px]">
+                        {osVisiveis('CONCLUIDA').slice(0, buscaOS ? 50 : 5).map(os => <OSCard key={os.id} os={os} />)}
+                        {osVisiveis('CONCLUIDA').length === 0 && (
+                            <div className="text-center py-8 border-2 border-dashed border-slate-100 rounded-xl text-slate-300 text-sm">
+                                {buscaOS ? `Nenhuma OS encontrada para "${buscaOS}"` : 'Nenhuma concluída ainda'}
+                            </div>
+                        )}
+                    </div>
+                </div>
+                )}
+
             </div>
                 </>
             )}
@@ -645,6 +823,10 @@ const Manutencao = () => {
                         </div>
 
                         <div className="p-6 space-y-5">
+
+                            {/* ── Bloco de contexto da OS ── */}
+                            <BlocoContextoOS os={updateOSDados} maquinas={maquinas} />
+
                             <div className="bg-slate-50 p-4 rounded-xl border border-slate-200">
                                 <label className="block text-[11px] font-bold text-slate-500 uppercase tracking-widest mb-3 border-b border-slate-200 pb-2 flex items-center gap-1"><User size={14}/> Equipe Técnica Atuando</label>
                                 <div className="space-y-4">
@@ -687,40 +869,118 @@ const Manutencao = () => {
                                 </select>
                             </div>
 
-                            {novoStatusOS === 'CONCLUIDA' && (
-                                <div className="p-4 bg-orange-50 border border-orange-200 rounded-lg space-y-3">
-                                    <label className="block text-xs font-bold text-orange-800 uppercase tracking-widest flex items-center gap-1">
-                                        <AlertTriangle size={14} /> Houve Atraso no Prazo Limite?
-                                    </label>
-                                    <p className="text-[11px] text-orange-700 leading-tight">
-                                        Se a OS excedeu o tempo (SLA) de <strong>{updateOSDados.prazo_limite_horas || 24}H</strong> estabelecido por culpa de fornecedores, usinagem ou demora de peças de SP, justifique abaixo.
-                                    </p>
-                                    <textarea
-                                        className="input-field h-24 resize-none border-orange-300 focus:ring-orange-500 placeholder:text-orange-300"
-                                        placeholder="Ex: Atraso dos Correios, usinagem demorou 15 dias..."
-                                        value={justificativaAtraso}
-                                        onChange={(e) => setJustificativaAtraso(e.target.value)}
-                                    ></textarea>
-                                    <p className="text-[10px] text-orange-600 font-bold">Ao preencher isto a diretoria pode perdoar a perda dos pontos na meta!</p>
-                                </div>
-                            )}
+                            {/* ── Cronômetro SLA ao vivo ── */}
+                            <CronometroModalSLA os={updateOSDados} />
 
                             {novoStatusOS === 'CONCLUIDA' && (
-                                <div className="p-4 bg-slate-50 border border-slate-200 rounded-lg space-y-3">
-                                    <label className="block text-xs font-bold text-slate-700 uppercase tracking-widest flex items-center gap-1">
-                                        <Wrench size={14} /> Anotações do Técnico / Uso de Peças
-                                    </label>
-                                    <textarea
-                                        className="input-field h-24 resize-none"
-                                        placeholder="Liste os serviços executados e as peças utilizadas..."
-                                        value={anotacoesConclusao}
-                                        onChange={(e) => setAnotacoesConclusao(e.target.value)}
-                                    ></textarea>
+                                <div className="space-y-4">
+
+                                    {/* ── 1. Ações Rápidas (Admin) ── PRIMEIRO */}
                                     {user?.perfil === 'ADMIN' && (
-                                         <Link to="/ativos" state={{ maquina_id: updateOSDados.maquina_id, reabrirOS: updateOSDados.id }} className="flex items-center justify-center gap-2 text-xs font-bold text-blue-700 bg-blue-100/50 p-2 rounded-lg border border-blue-200 hover:bg-blue-100 transition-colors mt-2">
-                                             <Database size={14} /> Faltou algo? Cadastrar nova peça no Ativo
-                                         </Link>
+                                        <div className="p-3 bg-white border border-blue-100 rounded-lg shadow-sm flex flex-col gap-2">
+                                            <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest text-center">Ações Rápidas do Administrador</span>
+                                            <div className="flex gap-2">
+                                                <button 
+                                                   type="button"
+                                                   onClick={() => { 
+                                                       setModalUpdateOpen(false); 
+                                                       navigate('/ativos', { 
+                                                           state: { 
+                                                               maquina_id: updateOSDados.maquina_id, 
+                                                               reabrirOS: updateOSDados.id, 
+                                                               tipo: 'PECA',
+                                                               anotacoes: anotacoesConclusao,
+                                                               justificativa: justificativaAtraso,
+                                                               corrigirSLA: corrigirSLA
+                                                           } 
+                                                       }); 
+                                                   }}
+                                                   className="flex-1 flex flex-col items-center justify-center gap-1 text-[11px] font-bold text-emerald-700 bg-emerald-50 p-2 rounded-lg border border-emerald-200 hover:bg-emerald-100 transition-colors"
+                                                >
+                                                    <Package size={16} /> Cadastrar Nova Peça
+                                                </button>
+                                                <button 
+                                                   type="button"
+                                                   onClick={() => { 
+                                                       setModalUpdateOpen(false); 
+                                                       navigate('/ativos', { 
+                                                           state: { 
+                                                               maquina_id: updateOSDados.maquina_id, 
+                                                               reabrirOS: updateOSDados.id, 
+                                                               tipo: 'EQUIP',
+                                                               anotacoes: anotacoesConclusao,
+                                                               justificativa: justificativaAtraso,
+                                                               corrigirSLA: corrigirSLA
+                                                           } 
+                                                       }); 
+                                                   }}
+                                                   className="flex-1 flex flex-col items-center justify-center gap-1 text-[11px] font-bold text-blue-700 bg-blue-50 p-2 rounded-lg border border-blue-200 hover:bg-blue-100 transition-colors"
+                                                >
+                                                    <Wrench size={16} /> Cadastrar Componente
+                                                </button>
+                                            </div>
+                                        </div>
                                     )}
+
+                                    {/* ── 2. Anotações do Técnico ── SEGUNDO */}
+                                    <div className="p-4 bg-slate-50 border border-slate-200 rounded-lg space-y-2">
+                                        <label className="block text-xs font-bold text-slate-700 uppercase tracking-widest flex items-center gap-1">
+                                            <Wrench size={14} /> Anotações do Técnico / Uso de Peças
+                                        </label>
+                                        <textarea
+                                            className="input-field h-24 resize-none"
+                                            placeholder="Liste os serviços executados e as peças utilizadas..."
+                                            value={anotacoesConclusao}
+                                            onChange={(e) => setAnotacoesConclusao(e.target.value.toUpperCase())}
+                                        ></textarea>
+                                    </div>
+
+                                    {/* ── 3. Justificativa de Atraso + Correção SLA ── TERCEIRO */}
+                                    <div className="p-4 bg-orange-50 border border-orange-200 rounded-lg space-y-3">
+                                        <label className="block text-xs font-bold text-orange-800 uppercase tracking-widest flex items-center gap-1">
+                                            <AlertTriangle size={14} /> Houve Atraso no Prazo Limite?
+                                        </label>
+                                        <p className="text-[11px] text-orange-700 leading-tight">
+                                            Se a OS excedeu o tempo (SLA) de <strong>{updateOSDados.prazo_limite_horas || 24}H</strong> por culpa de fornecedores, usinagem ou demora de peças de SP, justifique abaixo.
+                                        </p>
+                                        <textarea
+                                            className="input-field h-24 resize-none border-orange-300 focus:ring-orange-500 placeholder:text-orange-300"
+                                            placeholder="Ex: Atraso dos Correios, usinagem demorou 15 dias..."
+                                            value={justificativaAtraso}
+                                            onChange={(e) => setJustificativaAtraso(e.target.value.toUpperCase())}
+                                        ></textarea>
+
+                                        {user?.perfil === 'ADMIN' && (
+                                            <button
+                                                type="button"
+                                                onClick={() => setCorrigirSLA(v => !v)}
+                                                className={`w-full flex items-center gap-2 p-2.5 rounded-lg border text-[11px] font-bold transition-all ${
+                                                    corrigirSLA
+                                                        ? 'bg-emerald-600 text-white border-emerald-600 shadow-md'
+                                                        : 'bg-white text-orange-700 border-orange-300 hover:bg-orange-50'
+                                                }`}
+                                            >
+                                                <span className="text-base">{corrigirSLA ? '✅' : '⚡'}</span>
+                                                <span className="flex-1 text-left leading-tight">
+                                                    {corrigirSLA
+                                                        ? 'SLA será CORRIGIDO para o tempo real decorrido — atraso absorvido!'
+                                                        : 'Corrigir SLA para o tempo real desta OS (absorver atraso)'}
+                                                </span>
+                                                <span className={`text-[10px] px-1.5 py-0.5 rounded font-black ${
+                                                    corrigirSLA ? 'bg-white/20 text-white' : 'bg-orange-100 text-orange-600'
+                                                }`}>
+                                                    ADMIN
+                                                </span>
+                                            </button>
+                                        )}
+
+                                        <p className="text-[10px] text-orange-600 font-bold">
+                                            {corrigirSLA
+                                                ? '✅ O novo SLA será ajustado ao tempo real e o técnico não perderá pontos na meta!'
+                                                : 'Ao preencher isto a diretoria pode perdoar a perda dos pontos na meta!'}
+                                        </p>
+                                    </div>
+
                                 </div>
                             )}
                         </div>
@@ -855,6 +1115,97 @@ const Manutencao = () => {
                     </div>
                 </div>
             )}
+        </div>
+    );
+};
+
+// ── Sub-componente: Bloco de contexto da OS no modal ──────────────────────────
+const BlocoContextoOS = ({ os, maquinas }) => {
+    const [expandido, setExpandido] = useState(false);
+    const nomeMaquina = os?.maquinas?.nome || maquinas?.find(m => m.id === os?.maquina_id)?.nome || 'Máquina N/D';
+    const descricao = os?.descricao_problema || os?.descricao || '';
+    const truncada = descricao.length > 120 && !expandido;
+
+    const prioridadeCor = {
+        ALTA: 'bg-red-100 text-red-700 border-red-300',
+        MEDIA: 'bg-amber-100 text-amber-700 border-amber-300',
+        BAIXA: 'bg-blue-100 text-blue-700 border-blue-300',
+    };
+    const tipoCor = {
+        CORRETIVA: 'bg-red-50 text-red-600 border-red-200',
+        PREVENTIVA: 'bg-emerald-50 text-emerald-600 border-emerald-200',
+        MELHORIA: 'bg-purple-50 text-purple-600 border-purple-200',
+    };
+
+    return (
+        <div className="bg-slate-50 border border-slate-200 rounded-xl p-3 space-y-2">
+            <div className="flex items-center gap-2 flex-wrap">
+                <span className="font-black text-slate-700 text-sm flex-1 leading-tight">{nomeMaquina}</span>
+                <span className={`text-[10px] font-bold px-2 py-0.5 rounded border uppercase ${prioridadeCor[os?.prioridade] || 'bg-slate-100 text-slate-500 border-slate-200'}`}>
+                    {os?.prioridade}
+                </span>
+                <span className={`text-[10px] font-bold px-2 py-0.5 rounded border uppercase ${tipoCor[os?.tipo] || 'bg-slate-100 text-slate-500 border-slate-200'}`}>
+                    {os?.tipo}
+                </span>
+            </div>
+            <div className="flex items-center gap-1.5 text-[10px] text-slate-400 font-medium">
+                <Clock size={10} />
+                Aberta em: {os?.data_abertura ? new Date(os.data_abertura).toLocaleString('pt-BR') : '-'}
+            </div>
+            {descricao && (
+                <div className="text-xs text-slate-600 leading-snug border-t border-slate-200 pt-2">
+                    {truncada ? descricao.slice(0, 120) + '...' : descricao}
+                    {descricao.length > 120 && (
+                        <button
+                            type="button"
+                            onClick={() => setExpandido(v => !v)}
+                            className="text-blue-500 hover:text-blue-700 ml-1 font-bold text-[10px]"
+                        >
+                            {expandido ? 'ver menos ▲' : 'ver mais ▼'}
+                        </button>
+                    )}
+                </div>
+            )}
+        </div>
+    );
+};
+
+// ── Sub-componente: Painel Cronômetro + SLA no modal ──────────────────────────
+const CronometroModalSLA = ({ os }) => {
+    const crono = useCronometro(os?.data_abertura, os?.prazo_limite_horas, os?.status);
+    if (!os?.data_abertura || !os?.prazo_limite_horas) return null;
+
+    const horasRestantes = Math.max(0, os.prazo_limite_horas - crono.totalHoras).toFixed(1);
+    const horasExcedidas = Math.max(0, crono.totalHoras - os.prazo_limite_horas).toFixed(1);
+
+    return (
+        <div className={`rounded-xl border p-3 flex items-center gap-3 ${
+            crono.ultrapassouSLA
+                ? 'bg-red-50 border-red-300'
+                : crono.cor === 'amber'
+                ? 'bg-amber-50 border-amber-300'
+                : 'bg-emerald-50 border-emerald-300'
+        }`}>
+            <div className={`text-2xl font-black font-mono tabular-nums ${
+                crono.ultrapassouSLA ? 'text-red-600 animate-pulse' : crono.cor === 'amber' ? 'text-amber-600' : 'text-emerald-600'
+            }`}>
+                ⏱ {crono.display}
+            </div>
+            <div className="flex-1 min-w-0">
+                <div className={`text-[11px] font-bold uppercase tracking-wider ${
+                    crono.ultrapassouSLA ? 'text-red-700' : crono.cor === 'amber' ? 'text-amber-700' : 'text-emerald-700'
+                }`}>
+                    {crono.ultrapassouSLA
+                        ? `🚨 SLA Estourado há ${horasExcedidas}h — Justifique abaixo!`
+                        : crono.cor === 'amber'
+                        ? `⚠ Atenção! Restam aprox. ${horasRestantes}h no SLA`
+                        : `✅ Dentro do Prazo — SLA: ${os.prazo_limite_horas}H`
+                    }
+                </div>
+                <div className="text-[10px] text-slate-500 mt-0.5">
+                    Decorrido: {crono.h}h {crono.m}m · Prazo: {os.prazo_limite_horas}H
+                </div>
+            </div>
         </div>
     );
 };

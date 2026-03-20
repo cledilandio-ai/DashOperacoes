@@ -12,24 +12,28 @@ export const IndustriaProvider = ({ children }) => {
     const [setores, setSetores] = useState([]);
     const [maquinas, setMaquinas] = useState([]);
     const [equipamentos, setEquipamentos] = useState([]);
+    const [pecas, setPecas] = useState([]);
     const [loading, setLoading] = useState(false);
 
     const fetchArvore = async () => {
         setLoading(true);
         try {
-            const [resSetores, resMaquinas, resEquip] = await Promise.all([
+            const [resSetores, resMaquinas, resEquip, resPecas] = await Promise.all([
                 supabase.from('setores').select('*').order('nome'),
                 supabase.from('maquinas').select('*').order('nome'),
                 supabase.from('equipamentos').select('*').order('nome'),
+                supabase.from('pecas').select('*').order('nome'),
             ]);
 
             if (resSetores.error) console.error('Erro setores:', resSetores.error.message);
             if (resMaquinas.error) console.error('Erro maquinas:', resMaquinas.error.message);
             if (resEquip.error) console.warn('Equipamentos:', resEquip.error.message);
+            if (resPecas.error) console.warn('Peças:', resPecas.error.message);
 
             setSetores(resSetores.data || []);
             setMaquinas(resMaquinas.data || []);
             setEquipamentos(resEquip.data || []);
+            setPecas(resPecas.data || []);
 
         } catch (err) {
             console.error('Erro fetchArvore:', err);
@@ -45,6 +49,7 @@ export const IndustriaProvider = ({ children }) => {
             setSetores([]);
             setMaquinas([]);
             setEquipamentos([]);
+            setPecas([]);
             setLoading(false);
         }
     }, [user]);
@@ -193,6 +198,56 @@ export const IndustriaProvider = ({ children }) => {
         return updateEquipamento(id, { maquina_id: maquinaId });
     };
 
+    // ── PEÇAS ────────────────────────────────────────────────────
+
+    const addPeca = async (dados) => {
+        const payload = upperFields(dados, ['nome', 'referencia', 'fabricante', 'descricao']);
+        const { data, error } = await supabase
+            .from('pecas')
+            .insert([payload])
+            .select()
+            .single();
+
+        if (!error && data) {
+            await fetchArvore();
+        }
+        return { data, error };
+    };
+
+    const updatePeca = async (id, dados) => {
+        const payload = upperFields(dados, ['nome', 'referencia', 'fabricante', 'descricao']);
+        const { data, error } = await supabase
+            .from('pecas')
+            .update(payload)
+            .eq('id', id)
+            .select()
+            .single();
+
+        if (!error && data) {
+            await fetchArvore();
+        }
+        return { data, error };
+    };
+
+    const addPecas = async (lista) => {
+        const payloads = lista.map(p => upperFields(p, ['nome', 'referencia', 'fabricante', 'descricao']));
+        const { data, error } = await supabase
+            .from('pecas')
+            .insert(payloads)
+            .select();
+
+        if (!error) {
+            await fetchArvore();
+        }
+        return { data, error };
+    };
+
+    const deletePeca = async (id) => {
+        const { error } = await supabase.from('pecas').delete().eq('id', id);
+        if (!error) await fetchArvore();
+        return { error };
+    };
+
     // ── OS ───────────────────────────────────────────────────────
 
     const criarOSIndustria = async (dados) => {
@@ -217,6 +272,8 @@ export const IndustriaProvider = ({ children }) => {
             // Equipamentos
             addEquipamento, updateEquipamento, deleteEquipamento,
             desmontarEquipamento, montarEquipamento,
+            // Peças
+            pecas, addPeca, addPecas, updatePeca, deletePeca,
             // OS
             criarOSIndustria,
         }}>

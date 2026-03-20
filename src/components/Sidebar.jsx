@@ -1,6 +1,6 @@
 import React from 'react';
 import { NavLink, useNavigate } from 'react-router-dom';
-import { LayoutDashboard, Factory, BarChart3, Settings, LogOut, Wrench, Database, Package, Users, Cog } from 'lucide-react';
+import { LayoutDashboard, Factory, BarChart3, Settings, LogOut, Wrench, Database, Package, Users, Cog, FileText } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 
 const Sidebar = () => {
@@ -12,6 +12,7 @@ const Sidebar = () => {
         { icon: Package,         label: 'Expedição',         path: '/expedicao' },
         { icon: Database,        label: 'Ativos Indústria',  path: '/ativos' },
         { icon: Wrench,          label: 'Manutenção (TPM)',   path: '/manutencao' },
+        { icon: FileText,        label: 'Relatórios',        path: '/relatorios' },
         { icon: BarChart3,       label: 'Analista',           path: '/analista' },
         { icon: Users,           label: 'Administração',      path: '/admin' },
         { icon: Cog,             label: 'Configurações',      path: '/configuracoes' },

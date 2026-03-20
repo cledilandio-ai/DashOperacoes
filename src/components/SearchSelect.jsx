@@ -62,6 +62,10 @@ const SearchSelect = ({ options, value, onChange, placeholder = "Selecione...", 
                             {selectedOption.label} 
                             {selectedOption.tag && <span className="text-xs text-slate-400 font-mono ml-2 border border-slate-200 px-1 rounded bg-slate-50">{selectedOption.tag}</span>}
                         </div>
+                    ) : value ? (
+                        <div className="font-bold text-slate-800 italic">
+                            {value} <span className="text-[10px] bg-emerald-50 text-emerald-600 px-1 rounded border border-emerald-100 ml-2">Novo</span>
+                        </div>
                     ) : (
                         <span className="text-slate-400 italic">{placeholder}</span>
                     )}
@@ -75,10 +79,11 @@ const SearchSelect = ({ options, value, onChange, placeholder = "Selecione...", 
                         <Search className="w-5 h-5 text-amber-500" />
                         <input
                             type="text"
-                            className="w-full text-sm outline-none bg-transparent font-medium text-slate-700 placeholder:text-slate-400"
+                            className="w-full text-sm outline-none bg-transparent font-medium text-slate-700 placeholder:text-slate-400 uppercase"
+                            style={{ textTransform: 'uppercase' }}
                             placeholder="Buscar por nome, tag ou partes da palavra..."
                             value={search}
-                            onChange={(e) => setSearch(e.target.value)}
+                            onChange={(e) => setSearch(e.target.value.toUpperCase())}
                             onClick={e => e.stopPropagation()}
                             autoFocus
                         />
@@ -107,6 +112,24 @@ const SearchSelect = ({ options, value, onChange, placeholder = "Selecione...", 
                             <div className="px-4 py-8 text-sm text-center text-slate-400 flex flex-col items-center gap-2">
                                 <Search className="w-6 h-6 opacity-30" />
                                 {emptyMessage}
+                            </div>
+                        )}
+                        
+                        {/* Opção de Adicionar Novo (Creatable) */}
+                        {search.trim() && !options.some(o => o.label.toLowerCase() === search.toLowerCase()) && (
+                            <div
+                                className="px-4 py-3 my-1 text-sm cursor-pointer rounded-lg bg-emerald-50 text-emerald-700 border border-emerald-100 hover:bg-emerald-100 transition-colors flex items-center gap-2"
+                                onClick={() => {
+                                    onChange(search.toUpperCase());
+                                    setIsOpen(false);
+                                }}
+                            >
+                                <div className="p-1 bg-emerald-500 text-white rounded-full">
+                                    <Search className="w-3 h-3" />
+                                </div>
+                                <div className="flex-1">
+                                    <span className="font-bold">USAR NOVO:</span> "{search.toUpperCase()}"
+                                </div>
                             </div>
                         )}
                     </div>

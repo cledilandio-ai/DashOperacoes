@@ -3,11 +3,13 @@ import { useLocation, useNavigate } from 'react-router-dom';
 import {
     Factory, Layers, FolderOpen, Cog, Wrench, Search,
     ChevronDown, ChevronRight, Plus, Edit3, Trash2, X,
-    Clock, AlertTriangle, CheckCircle, Printer, Layers as LayersIcon
+    Clock, AlertTriangle, CheckCircle, Printer, Layers as LayersIcon,
+    Package
 } from 'lucide-react';
 import { QRCodeCanvas } from 'qrcode.react';
 import { useIndustria } from '../contexts/IndustriaContext';
 import { useProducao } from '../contexts/ProducaoContext';
+import { useConfig } from '../contexts/ConfiguracoesContext';
 import SearchSelect from '../components/SearchSelect';
 
 // ─── Utilitários ────────────────────────────────────────────────────────────
@@ -233,40 +235,105 @@ const ModalMaquina = ({ modo, maquinaEdit, setorIdInicial, setores, onSalvar, on
     );
 };
 
-const ModalEquipamento = ({ modo, equipEdit, maquinaId, maquinas, onSalvar, onFechar }) => {
-    const isEdicao = modo === 'editar';
+const ModalEquipamento = ({ modo, equipEdit, maquinaId, maquinas, equipamentos = [], pecas = [], onSalvar, onFechar }) => {
+    const isEdicaoInicial = modo === 'editar';
     const [form, setForm] = useState({
-        nome: isEdicao ? equipEdit.nome : '',
-        maquina_id: isEdicao ? equipEdit.maquina_id : (maquinaId || ''),
-        descricao: isEdicao ? (equipEdit.descricao || '') : '',
-        tag: isEdicao ? (equipEdit.tag || '') : '',
-        fabricante: isEdicao ? (equipEdit.fabricante || '') : '',
-        modelo: isEdicao ? (equipEdit.modelo || '') : '',
+        id: isEdicaoInicial ? equipEdit.id : null,
+        nome: isEdicaoInicial ? equipEdit.nome : '',
+        maquina_id: isEdicaoInicial ? equipEdit.maquina_id : (maquinaId || ''),
+        descricao: isEdicaoInicial ? (equipEdit.descricao || '') : '',
+        tag: isEdicaoInicial ? (equipEdit.tag || '') : '',
+        fabricante: isEdicaoInicial ? (equipEdit.fabricante || '') : '',
+        modelo: isEdicaoInicial ? (equipEdit.modelo || '') : '',
     });
+    
     const [salvando, setSalvando] = useState(false);
-    const up = (e) => e.target.value.toUpperCase();
+    const [novasPecas, setNovasPecas] = useState([]);
+    const [pecaTemp, setPecaTemp] = useState({ nome: '', quantidade: 1, referencia: '' });
+    
+    const up = (e) => (typeof e === 'string' ? e : e.target.value).toUpperCase();
 
+    // Verificar se a TAG já existe no sistema inteiro (maquinas + equipamentos)
+    const tagDuplicada = form.tag && form.tag.trim() && (() => {
+        const tagAtual = form.tag.trim().toUpperCase();
+        const tagEmMaquina = maquinas.some(m => m.tag && m.tag.toUpperCase() === tagAtual);
+        const tagEmEquip = equipamentos.some(eq => 
+            eq.id !== form.id && // Permite manter a própria tag ao editar
+            eq.tag && eq.tag.toUpperCase() === tagAtual
+        );
+        return tagEmMaquina || tagEmEquip;
+    })();
+
+    // Filtra equipamentos da mesma máquina para o Autocomplete
+    const equipsDaMaquina = equipamentos.filter(eq => eq.maquina_id == form.maquina_id);
+    
+    // Filtra as peças que já existem vinculadas a este equipamento no BD
+    const pecasExistentes = form.id ? pecas.filter(p => p.equipamento_id == form.id) : [];
+
+    const handleSelectEquip = (val) => {
+        // Se 'val' for um número/id (item existente)
+        const eqExistenteById = equipsDaMaquina.find(eq => eq.id == val);
+        
+        if (eqExistenteById) {
+            setForm({
+                ...form,
+                id: eqExistenteById.id,
+                nome: eqExistenteById.nome,
+                descricao: eqExistenteById.descricao || '',
+                tag: eqExistenteById.tag || '',
+                fabricante: eqExistenteById.fabricante || '',
+                modelo: eqExistenteById.modelo || ''
+            });
+            return;
+        }
+
+        // Se 'val' for uma string (item novo)
+        const eqExistenteByNome = equipsDaMaquina.find(eq => eq.nome === val);
+        if (eqExistenteByNome) {
+             setForm({
+                ...form,
+                id: eqExistenteByNome.id,
+                nome: eqExistenteByNome.nome,
+                descricao: eqExistenteByNome.descricao || '',
+                tag: eqExistenteByNome.tag || '',
+                fabricante: eqExistenteByNome.fabricante || '',
+                modelo: eqExistenteByNome.modelo || ''
+            });
+        } else {
+            setForm({ ...form, nome: val, id: isEdicaoInicial ? equipEdit.id : null });
+        }
+    };
+
+    const handleAddPecaTemp = () => {
+        if (!pecaTemp.nome.trim()) return;
+        setNovasPecas([...novasPecas, { ...pecaTemp, idTemp: Date.now() }]);
+        setPecaTemp({ nome: '', quantidade: 1, referencia: '' });
+    };
 
     const handleSubmit = async (e) => {
         e.preventDefault();
         if (!form.nome.trim()) return;
+        if (tagDuplicada) {
+            alert(`Já existe um ativo com a TAG "${form.tag}" no sistema. Use uma TAG diferente.`);
+            return;
+        }
         setSalvando(true);
-        await onSalvar(form);
+        await onSalvar(form, novasPecas);
         setSalvando(false);
     };
 
     return (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4" onClick={onFechar}>
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
             <form onSubmit={handleSubmit} className="bg-white rounded-xl shadow-2xl w-full max-w-md overflow-hidden" onClick={e => e.stopPropagation()}>
                 <div className="bg-blue-600 text-white p-4 flex justify-between items-center">
                     <h3 className="font-bold flex items-center gap-2">
                         <Wrench className="w-5 h-5" />
-                        {isEdicao ? 'Editar Equipamento' : 'Novo Equipamento / Componente'}
+                        {form.id ? 'Editar Equipamento (Auto-detectado)' : 'Novo Equipamento'}
                     </h3>
                     <button type="button" onClick={onFechar}><X className="w-5 h-5 opacity-70 hover:opacity-100" /></button>
                 </div>
-                <div className="p-6 space-y-4">
-                    {(!maquinaId || isEdicao) && (
+                <div className="p-6 space-y-4 max-h-[70vh] overflow-y-auto custom-scrollbar">
+                    {(!maquinaId || isEdicaoInicial) && (
                         <div>
                             <label className="label">Máquina *</label>
                             <SearchSelect
@@ -286,13 +353,37 @@ const ModalEquipamento = ({ modo, equipEdit, maquinaId, maquinas, onSalvar, onFe
                     )}
                     <div>
                         <label className="label">Nome do Equipamento *</label>
-                        <input type="text" className="input-field" placeholder="Ex: Motor Principal, Painel Elétrico" value={form.nome} onChange={e => setForm({ ...form, nome: up(e) })} required autoFocus />
+                        <SearchSelect 
+                            options={equipsDaMaquina.map(eq => ({
+                                value: eq.id,
+                                label: eq.nome,
+                                tag: eq.tag,
+                                descricao: eq.descricao
+                            }))}
+                            value={form.id || form.nome}
+                            onChange={handleSelectEquip}
+                            placeholder="🔍 Buscar ou digitar novo componente..."
+                            required={true}
+                            emptyMessage="Nenhum componente similar encontrado. Use a opção de 'USAR NOVO'."
+                        />
+                        <p className="text-[10px] text-slate-400 mt-1">Ao selecionar um componente existente, ele entrará em modo de edição.</p>
                     </div>
                     <div className="grid grid-cols-2 gap-4">
                         <div>
-                            <label className="label">TAG</label>
-                            <input type="text" className="input-field" placeholder="EQ-001" value={form.tag} onChange={e => setForm({ ...form, tag: up(e) })} />
-                        </div>
+                        <label className="label">TAG</label>
+                        <input 
+                            type="text" 
+                            className={`input-field ${tagDuplicada ? 'border-red-400 bg-red-50 focus:ring-red-300' : ''}`}
+                            placeholder="EQ-001" 
+                            value={form.tag} 
+                            onChange={e => setForm({ ...form, tag: up(e) })} 
+                        />
+                        {tagDuplicada && (
+                            <p className="text-[11px] text-red-600 font-bold mt-1 flex items-center gap-1">
+                                ⚠️ TAG <strong>{form.tag}</strong> já existe no sistema. Escolha outra.
+                            </p>
+                        )}
+                    </div>
                         <div>
                             <label className="label">Fabricante</label>
                             <input type="text" className="input-field" placeholder="Ex: WEG" value={form.fabricante} onChange={e => setForm({ ...form, fabricante: up(e) })} />
@@ -302,11 +393,153 @@ const ModalEquipamento = ({ modo, equipEdit, maquinaId, maquinas, onSalvar, onFe
                         <label className="label">Descrição</label>
                         <input type="text" className="input-field" placeholder="Função do componente..." value={form.descricao} onChange={e => setForm({ ...form, descricao: up(e) })} />
                     </div>
+
+                    {/* ── SEÇÃO DE PEÇAS NO ATO DO CADASTRO ── */}
+                    <div className="mt-6 border-t border-slate-200 pt-4">
+                        <label className="block text-sm font-bold text-slate-700 flex items-center gap-2 mb-3">
+                            <Package className="w-4 h-4 text-emerald-600" />
+                            Adicionar Peças neste Componente (Opcional)
+                        </label>
+
+                        {/* Lista de peças já cadastradas no BD (somente leitura rápida aqui) */}
+                        {pecasExistentes.length > 0 && (
+                            <div className="mb-3 space-y-1">
+                                <p className="text-[10px] font-bold text-slate-400 uppercase">Peças já vinculadas:</p>
+                                {pecasExistentes.map(p => (
+                                    <div key={p.id} className="text-xs bg-slate-50 border border-slate-100 px-2 py-1 rounded text-slate-600 flex justify-between">
+                                        <span>⚙️ {p.nome}</span>
+                                        <span className="font-bold">{p.quantidade}x</span>
+                                    </div>
+                                ))}
+                            </div>
+                        )}
+
+                        {/* Lista de peças na fila para salvar junto */}
+                        {novasPecas.length > 0 && (
+                            <div className="mb-3 space-y-1">
+                                <p className="text-[10px] font-bold text-emerald-600 uppercase">Peças na fila de cadastro:</p>
+                                {novasPecas.map(p => (
+                                    <div key={p.idTemp} className="text-xs bg-emerald-50 border border-emerald-100 px-2 py-1 rounded text-emerald-800 flex justify-between items-center">
+                                        <span><Package className="w-3 h-3 inline mr-1"/> {p.nome} ({p.referencia || 'S/ Ref'})</span>
+                                        <div className="flex items-center gap-2">
+                                            <span className="font-bold">{p.quantidade}x</span>
+                                            <button type="button" onClick={() => setNovasPecas(novasPecas.filter(n => n.idTemp !== p.idTemp))} className="text-red-400 hover:text-red-600">✕</button>
+                                        </div>
+                                    </div>
+                                ))}
+                            </div>
+                        )}
+
+                        {/* Formulário inline para nova peça */}
+                        <div className="bg-slate-50 p-3 rounded-lg border border-slate-200 flex gap-2 items-end">
+                            <div className="flex-1">
+                                <label className="text-[10px] font-bold text-slate-500">Nome / Especificação da Peça</label>
+                                <input type="text" className="input-field py-1 text-xs" value={pecaTemp.nome} onChange={e => setPecaTemp({...pecaTemp, nome: up(e)})} placeholder="Ex: Rolamento..." />
+                            </div>
+                            <div className="w-24">
+                                <label className="text-[10px] font-bold text-slate-500">Qtd.</label>
+                                <input type="number" min="1" className="input-field py-1 text-xs" value={pecaTemp.quantidade} onChange={e => setPecaTemp({...pecaTemp, quantidade: parseInt(e.target.value)||1})} />
+                            </div>
+                            <button type="button" onClick={handleAddPecaTemp} disabled={!pecaTemp.nome.trim()} className="btn-secondary py-1 px-3 text-xs bg-white text-emerald-600 border-emerald-200 hover:bg-emerald-50 hover:border-emerald-300 disabled:opacity-50">
+                                + Incluir
+                            </button>
+                        </div>
+                    </div>
                 </div>
                 <div className="bg-slate-50 p-4 flex justify-end gap-2 border-t border-slate-100">
                     <button type="button" onClick={onFechar} className="btn-secondary">Cancelar</button>
                     <button type="submit" disabled={salvando} className="btn-primary bg-blue-600 hover:bg-blue-700">
-                        {salvando ? 'Salvando...' : isEdicao ? 'Salvar Alterações' : 'Cadastrar Equipamento'}
+                        {salvando ? 'Salvando...' : form.id ? 'Salvar Edição' : 'Cadastrar Equipamento'}
+                    </button>
+                </div>
+            </form>
+        </div>
+    );
+};
+
+// ─── Modal de Peça (Componente Filho) ───────────────────────────────────────
+
+const ModalPeca = ({ modo, pecaEdit, maquinaId, equipamentoId, maquinas = [], equipamentos = [], onSalvar, onFechar }) => {
+    const isEdicao = modo === 'editar';
+    const [form, setForm] = useState({
+        nome: isEdicao ? pecaEdit.nome : '',
+        maquina_id: isEdicao ? pecaEdit.maquina_id : (maquinaId || null),
+        equipamento_id: isEdicao ? pecaEdit.equipamento_id : (equipamentoId || null),
+        referencia: isEdicao ? (pecaEdit.referencia || '') : '',
+        fabricante: isEdicao ? (pecaEdit.fabricante || '') : '',
+        quantidade: isEdicao ? (pecaEdit.quantidade || 1) : 1,
+        descricao: isEdicao ? (pecaEdit.descricao || '') : '',
+    });
+    const [salvando, setSalvando] = useState(false);
+    const up = (e) => e.target.value.toUpperCase();
+
+    const handleSubmit = async (e) => {
+        e.preventDefault();
+        if (!form.nome.trim()) return;
+        setSalvando(true);
+        await onSalvar(form);
+        setSalvando(false);
+    };
+
+    return (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+            <form onSubmit={handleSubmit} className="bg-white rounded-xl shadow-2xl w-full max-w-md overflow-hidden" onClick={e => e.stopPropagation()}>
+                <div className="bg-emerald-600 text-white p-4 flex justify-between items-center">
+                    <h3 className="font-bold flex items-center gap-2">
+                        <Package className="w-5 h-5" />
+                        {isEdicao ? 'Editar Peça' : 'Nova Peça'}
+                    </h3>
+                    <button type="button" onClick={onFechar}><X className="w-5 h-5 opacity-70 hover:opacity-100" /></button>
+                </div>
+                <div className="p-6 space-y-4">
+                    <div>
+                        <label className="label">Nome da Peça *</label>
+                        <input
+                            type="text"
+                            className="input-field"
+                            placeholder="Ex: ROLAMENTO 6204..."
+                            value={form.nome}
+                            onChange={e => setForm({ ...form, nome: up(e) })}
+                            required
+                            autoFocus
+                        />
+                        <p className="text-[10px] text-slate-400 mt-1">Digite a especificação completa da peça.</p>
+                    </div>
+                    <div>
+                        <label className="label">Vincular a Componente (Opcional)</label>
+                        <SearchSelect 
+                            options={equipamentos.filter(e => e.maquina_id == form.maquina_id).map(e => ({ value: e.id, label: e.nome, tag: e.tag }))}
+                            value={form.equipamento_id}
+                            onChange={val => setForm({ ...form, equipamento_id: val })}
+                            placeholder="🛠️ Selecione o componente..."
+                            emptyMessage="Nenhum componente nesta máquina."
+                        />
+                    </div>
+                    <div className="grid grid-cols-2 gap-4">
+                        <div>
+                            <label className="label">Referência</label>
+                            <input type="text" className="input-field" placeholder="Ex: 6204-ZZ" value={form.referencia} onChange={e => setForm({ ...form, referencia: up(e) })} />
+                        </div>
+                        <div>
+                            <label className="label">Fabricante</label>
+                            <input type="text" className="input-field" placeholder="Ex: SKF, Gates" value={form.fabricante} onChange={e => setForm({ ...form, fabricante: up(e) })} />
+                        </div>
+                    </div>
+                    <div className="grid grid-cols-2 gap-4">
+                        <div>
+                            <label className="label">Quantidade</label>
+                            <input type="number" min="1" className="input-field" value={form.quantidade} onChange={e => setForm({ ...form, quantidade: parseInt(e.target.value) || 1 })} required />
+                        </div>
+                    </div>
+                    <div>
+                        <label className="label">Descrição</label>
+                        <input type="text" className="input-field" placeholder="Aplicação ou detalhes..." value={form.descricao} onChange={e => setForm({ ...form, descricao: up(e) })} />
+                    </div>
+                </div>
+                <div className="bg-slate-50 p-4 flex justify-end gap-2 border-t border-slate-100">
+                    <button type="button" onClick={onFechar} className="btn-secondary">Cancelar</button>
+                    <button type="submit" disabled={salvando} className="btn-primary bg-emerald-600 hover:bg-emerald-700">
+                        {salvando ? 'Salvando...' : isEdicao ? 'Salvar Alterações' : 'Cadastrar Peça'}
                     </button>
                 </div>
             </form>
@@ -317,16 +550,19 @@ const ModalEquipamento = ({ modo, equipEdit, maquinaId, maquinas, onSalvar, onFe
 // ─── Modal de Etiqueta (Impressão) ──────────────────────────────────────────
 
 const ModalEtiqueta = ({ maquina, onFechar }) => {
+    const { config } = useConfig();
+    
     const handlePrint = () => {
         window.print();
     };
 
-    // URL para a qual o QR Code vai apontar
-    const qrUrl = `${window.location.origin}/producao?solicitar_os=${maquina.id}`;
+    // URL para a qual o QR Code vai apontar - Prioriza config do Admin
+    const baseUrl = (config?.url_sistema || window.location.origin).replace(/\/$/, '').replace(/\/login$/, '');
+    const qrUrl = `${baseUrl}/producao?solicitar_os=${maquina.id}`;
 
     return (
         <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-[110] p-4" onClick={onFechar}>
-            <div className="bg-white rounded-2xl shadow-2xl w-full max-w-sm overflow-hidden" onClick={e => e.stopPropagation()}>
+            <div className="bg-white rounded-2xl shadow-2xl w-full max-w-sm overflow-hidden no-print-bg" onClick={e => e.stopPropagation()}>
                 <div className="bg-slate-50 border-b border-slate-100 p-4 flex justify-between items-center">
                     <h3 className="font-bold text-slate-800 flex items-center gap-2">
                         <Printer className="w-4 h-4 text-amber-500" /> Prévia da Etiqueta
@@ -359,7 +595,7 @@ const ModalEtiqueta = ({ maquina, onFechar }) => {
                     </div>
 
                     <p className="text-xs text-slate-400 text-center px-4 italic">
-                        Dica: Use papel adesivo térmico para melhor resultado.
+                        Dica: Use a URL configurada no Admin para garantir que o QR funcione em produção.
                     </p>
                 </div>
 
@@ -375,40 +611,44 @@ const ModalEtiqueta = ({ maquina, onFechar }) => {
 
             <style>{`
                 @media print {
-                    /* Oculta tudo na tela */
+                    /* Força o documento a ter apenas a altura da página visível */
+                    html, body {
+                        height: 100vh !important;
+                        overflow: hidden !important;
+                        margin: 0 !important;
+                        padding: 0 !important;
+                    }
+
+                    /* Esconde todos os elementos por padrão */
                     body * {
                         visibility: hidden !important;
                     }
-                    
-                    /* Mostra apenas a etiqueta e seus conteúdos */
+
+                    /* Mostra apenas a etiqueta selecionada e seus filhos */
                     #etiqueta-print, #etiqueta-print * {
                         visibility: visible !important;
                     }
 
-                    /* Posiciona a etiqueta no topo da página de impressão */
+                    /* Fixa a etiqueta no topo absoluto para ignorar o scroll do resto da página */
                     #etiqueta-print {
-                        position: absolute !important;
-                        left: 50% !important;
-                        top: 0 !important;
-                        transform: translateX(-50%) !important;
-                        width: 100mm !important;
-                        border: 1px solid #000 !important;
-                        padding: 20px !important;
                         display: flex !important;
                         flex-direction: column !important;
                         align-items: center !important;
-                        background: white !important;
+                        position: fixed !important;
+                        top: 0 !important;
+                        left: 0 !important;
+                        right: 0 !important;
+                        bottom: 0 !important;
+                        justify-content: center !important;
+                    #etiqueta-print * {
+                        visibility: visible !important;
                     }
 
-                    /* Forçar exibição de cores e imagens (QR Code) */
-                    * {
-                        -webkit-print-color-adjust: exact !important;
-                        print-color-adjust: exact !important;
-                    }
-
-                    @page {
-                        margin: 10mm;
-                        size: portrait;
+                    /* Estilização específica da etiqueta para impressão */
+                    .bg-white.p-6 {
+                        border: 1px solid #000 !important; /* Borda preta fina para corte */
+                        box-shadow: none !important;
+                        padding: 20mm !important;
                     }
                 }
             `}</style>
@@ -443,11 +683,13 @@ const BotaoExcluir = ({ onConfirmar, label = 'Remover' }) => {
 // ─── Componente Máquina ────────────────────────────────────────────────────────
 
 const CardMaquina = ({ 
-    maquina, equipamentos, produtos = [], onNovoEquipamento, onEditarMaquina, onDeleteMaquina, onEditarEquipamento, onDesmontarEquipamento,
-    onImprimirEtiqueta, onUpdateMaquina 
+    maquina, equipamentos, pecas = [], produtos = [], 
+    onNovoEquipamento, onEditarMaquina, onDeleteMaquina, onEditarEquipamento, onDesmontarEquipamento,
+    onImprimirEtiqueta, onUpdateMaquina, onNovaPeca, onEditarPeca, onDeletePeca
 }) => {
     const [expandido, setExpandido] = useState(false);
     const equips = equipamentos.filter(e => e.maquina_id === maquina.id);
+    const pecasMaquina = pecas.filter(p => p.maquina_id === maquina.id && !p.equipamento_id);
 
     const statusColor = {
         DISPONIVEL: 'bg-green-100 text-green-700',
@@ -526,49 +768,123 @@ const CardMaquina = ({
                     className="text-xs text-slate-400 hover:text-slate-600 ml-2 flex items-center gap-1 shrink-0 opacity-100 group-hover:opacity-0 transition-opacity"
                 >
                     <Wrench className="w-3 h-3" />
-                    {equips.length} componente{equips.length !== 1 ? 's' : ''}
+                    {equips.length} comp / {pecasMaquina.length} peças
                     {expandido ? <ChevronDown className="w-3 h-3" /> : <ChevronRight className="w-3 h-3" />}
                 </button>
             </div>
 
             {expandido && (
-                <div className="border-t border-slate-100 bg-slate-50/50 p-3 pl-14 space-y-1.5">
-                    {equips.length === 0 ? (
-                        <p className="text-xs text-slate-400 italic">Sem componentes cadastrados.</p>
-                    ) : equips.map(eq => (
-                        <div key={eq.id} className="flex items-center justify-between text-sm py-1">
-                            <div className="flex items-center gap-2">
-                                <div className="w-1.5 h-1.5 rounded-full bg-blue-300 shrink-0" />
-                                <span className="text-slate-700 font-medium">{eq.nome}</span>
-                                {eq.tag && <span className="text-xs font-mono text-slate-400">{eq.tag}</span>}
-                                {eq.maquina_id && (
-                                    <button
-                                        onClick={(e) => { e.stopPropagation(); onDesmontarEquipamento(eq.id); }}
-                                        className="text-[10px] bg-slate-100 text-slate-500 hover:bg-amber-100 hover:text-amber-700 px-1.5 py-0.5 rounded transition-colors"
-                                        title="Levar para o estoque"
-                                    >
-                                        DESMONTAR
-                                    </button>
-                                )}
-                            </div>
-                            <div className="flex items-center gap-2">
-                                <span className="text-xs text-slate-400 italic truncate max-w-[180px]">{eq.descricao || eq.fabricante || '—'}</span>
-                                <button
-                                    onClick={() => onEditarEquipamento(eq)}
-                                    className="text-slate-300 hover:text-blue-500 p-1 rounded transition-colors"
-                                    title="Editar componente"
-                                >
-                                    <Edit3 className="w-3 h-3" />
-                                </button>
-                            </div>
+                <div className="border-t border-slate-100 bg-slate-50/50 p-3 pl-14 space-y-4">
+                    
+                    {/* ── EQUIPAMENTOS DA MÁQUINA ── */}
+                    <div>
+                        <div className="flex items-center justify-between mb-2">
+                            <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest flex items-center gap-1">
+                                <Wrench className="w-3 h-3" /> Componentes ({equips.length})
+                            </span>
+                            <button onClick={() => onNovoEquipamento(maquina.id)} className="text-blue-500 hover:text-blue-700 font-semibold text-xs flex items-center gap-1">
+                                <Plus className="w-3 h-3" /> Novo Componente
+                            </button>
                         </div>
-                    ))}
-                    <button
-                        onClick={() => onNovoEquipamento(maquina.id)}
-                        className="flex items-center gap-1 text-xs text-blue-500 hover:text-blue-700 font-semibold mt-1"
-                    >
-                        <Plus className="w-3 h-3" /> Adicionar componente
-                    </button>
+                        
+                        {equips.length === 0 ? (
+                            <p className="text-xs text-slate-400 italic">Sem componentes cadastrados.</p>
+                        ) : equips.map(eq => {
+                            const pecasEq = pecas.filter(p => p.equipamento_id === eq.id);
+                            return (
+                                <div key={eq.id} className="mb-2 bg-white border border-slate-200 rounded p-2 shadow-sm">
+                                    <div className="flex items-center justify-between text-sm py-1">
+                                        <div className="flex items-center gap-2">
+                                            <div className="w-1.5 h-1.5 rounded-full bg-blue-400 shrink-0" />
+                                            <span className="text-slate-700 font-medium">{eq.nome}</span>
+                                            {eq.tag && <span className="text-[10px] font-mono bg-slate-100 text-slate-500 px-1 rounded">{eq.tag}</span>}
+                                            {eq.maquina_id && (
+                                                <button
+                                                    onClick={(e) => { e.stopPropagation(); onDesmontarEquipamento(eq.id); }}
+                                                    className="text-[9px] font-bold uppercase tracking-wider bg-slate-100 text-slate-500 hover:bg-amber-100 hover:text-amber-700 px-1.5 py-0.5 rounded transition-colors"
+                                                    title="Levar para o estoque"
+                                                >
+                                                    DESMONTAR
+                                                </button>
+                                            )}
+                                        </div>
+                                        <div className="flex items-center gap-2">
+                                            <span className="text-xs text-slate-400 italic truncate max-w-[150px]">{eq.descricao || eq.fabricante || '—'}</span>
+                                            <button
+                                                onClick={() => onEditarEquipamento(eq)}
+                                                className="text-slate-300 hover:text-blue-500 p-1 rounded transition-colors"
+                                                title="Editar componente"
+                                            >
+                                                <Edit3 className="w-3 h-3" />
+                                            </button>
+                                        </div>
+                                    </div>
+                                    
+                                    {/* PEÇAS DO EQUIPAMENTO */}
+                                    <div className="mt-2 pl-3 border-l-2 border-emerald-100 space-y-1">
+                                        {pecasEq.map(p => (
+                                            <div key={p.id} className="flex items-center justify-between text-xs bg-emerald-50/30 hover:bg-emerald-50 transition-colors px-2 py-1 rounded group/peca">
+                                                <div className="flex items-center gap-1.5">
+                                                    <Package className="w-3 h-3 text-emerald-500" />
+                                                    <span className="text-slate-600 font-medium">{p.nome}</span>
+                                                    <span className="text-slate-400">({p.quantidade}x)</span>
+                                                    {p.referencia && <span className="text-[9px] font-mono text-slate-400 bg-white border border-slate-100 px-1 rounded">{p.referencia}</span>}
+                                                </div>
+                                                <div className="flex items-center gap-1 opacity-0 group-hover/peca:opacity-100 transition-opacity">
+                                                    <button onClick={() => onEditarPeca(p)} className="text-slate-300 hover:text-emerald-600 p-0.5"><Edit3 className="w-3 h-3" /></button>
+                                                    <BotaoExcluir onConfirmar={() => onDeletePeca(p.id)} label="Remover Peça" />
+                                                </div>
+                                            </div>
+                                        ))}
+                                        <button
+                                            onClick={() => onNovaPeca(maquina.id, eq.id)}
+                                            className="flex items-center gap-1 text-[10px] uppercase font-bold text-emerald-600 hover:text-emerald-700 mt-1.5"
+                                        >
+                                            <Plus className="w-3 h-3" /> Adicionar Peça a {eq.nome}
+                                        </button>
+                                    </div>
+                                </div>
+                            );
+                        })}
+                    </div>
+
+                    {/* ── PEÇAS AVULSAS DA MÁQUINA ── */}
+                    <div className="pt-2 border-t border-slate-200 border-dashed">
+                        <div className="flex items-center justify-between mb-2">
+                            <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest flex items-center gap-1">
+                                <Package className="w-3 h-3" /> Peças Avulsas da Máquina ({pecasMaquina.length})
+                            </span>
+                            <button onClick={() => onNovaPeca(maquina.id, null)} className="text-emerald-600 hover:text-emerald-700 font-semibold text-xs flex items-center gap-1">
+                                <Plus className="w-3 h-3" /> Nova Peça
+                            </button>
+                        </div>
+                        
+                        {pecasMaquina.length === 0 ? (
+                            <p className="text-[11px] text-slate-400 italic">Nenhuma peça avulsa cadastrada.</p>
+                        ) : (
+                            <div className="space-y-1">
+                                {pecasMaquina.map(p => (
+                                    <div key={p.id} className="flex items-center justify-between text-xs bg-white border border-slate-200 shadow-sm hover:shadow transition-shadow px-2 py-1.5 rounded group/peca flex-wrap gap-1">
+                                        <div className="flex items-center gap-2 max-w-[70%]">
+                                            <div className="p-1 bg-emerald-50 text-emerald-600 rounded">
+                                                <Package className="w-3 h-3" />
+                                            </div>
+                                            <span className="text-slate-700 font-medium truncate">{p.nome}</span>
+                                            <span className="text-slate-500 font-semibold bg-slate-100 px-1.5 rounded">{p.quantidade}x</span>
+                                            {p.referencia && <span className="text-[10px] font-mono text-slate-500">{p.referencia}</span>}
+                                        </div>
+                                        <div className="flex items-center gap-2">
+                                            {p.fabricante && <span className="text-[10px] text-slate-400 hidden sm:inline">{p.fabricante}</span>}
+                                            <div className="flex items-center gap-1 opacity-0 group-hover/peca:opacity-100 transition-opacity">
+                                                <button onClick={() => onEditarPeca(p)} className="text-slate-400 hover:text-emerald-600 p-1"><Edit3 className="w-3.5 h-3.5" /></button>
+                                                <BotaoExcluir onConfirmar={() => onDeletePeca(p.id)} label="Remover Peça" />
+                                            </div>
+                                        </div>
+                                    </div>
+                                ))}
+                            </div>
+                        )}
+                    </div>
                 </div>
             )}
         </div>
@@ -578,9 +894,10 @@ const CardMaquina = ({
 // ─── Componente Nó da Árvore (recursivo) ─────────────────────────────────────
 
 const NoArvore = ({
-    no, nivel, maquinas, equipamentos, produtos, searchTerm,
+    no, nivel, maquinas, equipamentos, pecas, produtos, searchTerm,
     onAddFilho, onEditarNo, onDeleteNo, onNovaMaquina, onEditarMaquina, onNovoEquipamento, onEditarEquipamento, onDeleteMaquina,
-    onDesmontarEquipamento, onImprimirEtiqueta, onUpdateMaquina
+    onDesmontarEquipamento, onImprimirEtiqueta, onUpdateMaquina,
+    onNovaPeca, onEditarPeca, onDeletePeca
 }) => {
     const [expandido, setExpandido] = useState(nivel < 2); // Abre automaticamente até nível 1
 
@@ -660,6 +977,7 @@ const NoArvore = ({
                             nivel={nivel + 1}
                             maquinas={maquinas}
                             equipamentos={equipamentos}
+                            pecas={pecas}
                             produtos={produtos}
                             searchTerm={searchTerm}
                             onAddFilho={onAddFilho}
@@ -673,6 +991,9 @@ const NoArvore = ({
                             onDesmontarEquipamento={onDesmontarEquipamento}
                             onImprimirEtiqueta={onImprimirEtiqueta}
                             onUpdateMaquina={onUpdateMaquina}
+                            onNovaPeca={onNovaPeca}
+                            onEditarPeca={onEditarPeca}
+                            onDeletePeca={onDeletePeca}
                         />
                     ))}
 
@@ -682,6 +1003,7 @@ const NoArvore = ({
                             key={maq.id}
                             maquina={maq}
                             equipamentos={equipamentos}
+                            pecas={pecas}
                             produtos={produtos}
                             onNovoEquipamento={onNovoEquipamento}
                             onEditarMaquina={onEditarMaquina}
@@ -690,6 +1012,9 @@ const NoArvore = ({
                             onDesmontarEquipamento={onDesmontarEquipamento}
                             onImprimirEtiqueta={onImprimirEtiqueta}
                             onUpdateMaquina={onUpdateMaquina}
+                            onNovaPeca={onNovaPeca}
+                            onEditarPeca={onEditarPeca}
+                            onDeletePeca={onDeletePeca}
                         />
                     ))}
 
@@ -713,10 +1038,11 @@ const Ativos = () => {
 
     const context = useIndustria();
     const {
-        setores = [], maquinas = [], equipamentos = [], loading,
+        setores = [], maquinas = [], equipamentos = [], pecas = [], loading,
         addSetor, updateSetor, deleteSetor,
         addMaquina, updateMaquina, deleteMaquina,
         addEquipamento, updateEquipamento, desmontarEquipamento,
+        addPeca, addPecas, updatePeca, deletePeca
     } = context || {};
     const { produtos = [], updateMaquina: updateMaquinaProd } = useProducao();
 
@@ -726,21 +1052,34 @@ const Ativos = () => {
     const [modalSetor, setModalSetor]     = useState(null); // { modo: 'novo'|'editar', pai?, setorEdit? }
     const [modalMaquina, setModalMaquina] = useState(null); // { modo: 'novo'|'editar', setorIdInicial?, maquinaEdit? }
     const [modalEquip, setModalEquip]     = useState(null); // { modo: 'novo'|'editar', maquinaId?, equipEdit? }
+    const [modalPeca, setModalPeca]       = useState(null); // { modo: 'novo'|'editar', maquinaId?, equipamentoId?, pecaEdit? }
     const [modalEtiqueta, setModalEtiqueta] = useState(null);
 
     // Auto-open modal se vier da Manutenção
     useEffect(() => {
-        if (location.state?.maquina_id && maquinas.length > 0 && !modalEquip) {
+        if (location.state?.maquina_id && maquinas.length > 0) {
             const maq = maquinas.find(m => m.id === location.state.maquina_id);
-            if (maq) {
+            if (!maq) return;
+
+            // Preservar todos os campos do formulário ao limpar o state
+            const estadoPreservado = {
+                reabrirOS: location.state.reabrirOS,
+                anotacoes: location.state.anotacoes,
+                justificativa: location.state.justificativa,
+                corrigirSLA: location.state.corrigirSLA
+            };
+
+            if (location.state.tipo === 'PECA' && !modalPeca) {
+                setSearchTerm(maq.nome);
+                setModalPeca({ modo: 'novo', maquinaId: maq.id });
+                navigate('/ativos', { replace: true, state: estadoPreservado });
+            } else if ((!location.state.tipo || location.state.tipo === 'EQUIP') && !modalEquip) {
                 setSearchTerm(maq.nome);
                 setModalEquip({ modo: 'novo', maquinaId: maq.id });
-                // Limpar state de maquina_id para não reabrir em re-renders,
-                // mas manter reabrirOS para poder voltar
-                navigate('/ativos', { replace: true, state: { reabrirOS: location.state.reabrirOS } });
+                navigate('/ativos', { replace: true, state: estadoPreservado });
             }
         }
-    }, [location.state?.maquina_id, maquinas.length, navigate]);
+    }, [location.state?.maquina_id, location.state?.tipo, maquinas.length, navigate]);
 
     // Monta a árvore de setores (obrigatoriamente ANTES dos early returns)
     const arvore = useMemo(() => buildTree(setores), [setores]);
@@ -783,19 +1122,51 @@ const Ativos = () => {
     };
 
     // ── Handlers Equipamentos ──
-    const handleSalvarEquipamento = async (form) => {
-        if (modalEquip.modo === 'editar') {
-            const { error } = await updateEquipamento(modalEquip.equipEdit.id, form);
+    const handleSalvarEquipamento = async (form, novasPecas = []) => {
+        let eqId = null;
+
+        if (form.id || modalEquip.modo === 'editar') {
+            const idToUpdate = form.id || modalEquip.equipEdit.id;
+            const { error } = await updateEquipamento(idToUpdate, form);
             if (error) alert('Erro ao editar equipamento: ' + error.message);
+            else eqId = idToUpdate;
         } else {
-            const { error } = await addEquipamento(form);
+            // Remove o campo 'id' para não enviar id:null ao Supabase (coluna IDENTITY gerada automaticamente)
+            const { id: _idDescartado, ...dadosSemId } = form;
+            const { data, error } = await addEquipamento(dadosSemId);
             if (error) alert('Erro ao cadastrar equipamento: ' + error.message);
+            else if (data) eqId = data.id;
         }
+
+        // Salva as peças vinculadas criadas no ato do cadastro de equipamento
+        if (eqId && novasPecas.length > 0) {
+            const pecasParaSalvar = novasPecas.map(p => ({
+                nome: p.nome,
+                quantidade: p.quantidade,
+                referencia: p.referencia || '',
+                equipamento_id: parseInt(eqId),
+                maquina_id: form.maquina_id ? parseInt(form.maquina_id) : null
+            }));
+            
+            const { error: errorBulk } = await addPecas(pecasParaSalvar);
+            if (errorBulk) {
+                console.error("Erro ao salvar peças:", errorBulk);
+                alert('Erro ao salvar algumas peças: ' + errorBulk.message);
+            }
+        }
+
         setModalEquip(null);
 
         // Voltar para manutenção caso tenha vindo de lá
         if (location.state?.reabrirOS) {
-            navigate('/manutencao', { state: { reabrirOS: location.state.reabrirOS } });
+            navigate('/manutencao', { 
+                state: { 
+                    reabrirOS: location.state.reabrirOS,
+                    anotacoes: location.state.anotacoes || '',
+                    justificativa: location.state.justificativa || '',
+                    corrigirSLA: location.state.corrigirSLA ?? false
+                } 
+            });
         }
     };
 
@@ -803,6 +1174,41 @@ const Ativos = () => {
         if (!confirm('Deseja realmente desmontar este componente e enviá-lo para o estoque?')) return;
         const { error } = await desmontarEquipamento(id);
         if (error) alert('Erro ao desmontar: ' + error.message);
+    };
+
+    // ── Handlers Peças ──
+    const handleSalvarPeca = async (form) => {
+        const payload = {
+            ...form,
+            maquina_id: form.maquina_id ? parseInt(form.maquina_id) : null,
+            equipamento_id: form.equipamento_id ? parseInt(form.equipamento_id) : null,
+            quantidade: parseInt(form.quantidade) || 1
+        };
+
+        if (modalPeca.modo === 'editar') {
+            const { error } = await updatePeca(modalPeca.pecaEdit.id, payload);
+            if (error) alert('Erro ao editar peça: ' + error.message);
+        } else {
+            const { error } = await addPeca(payload);
+            if (error) alert('Erro ao cadastrar peça: ' + error.message);
+        }
+        setModalPeca(null);
+
+        if (location.state?.reabrirOS) {
+            navigate('/manutencao', { 
+                state: { 
+                    reabrirOS: location.state.reabrirOS,
+                    anotacoes: location.state.anotacoes || '',
+                    justificativa: location.state.justificativa || '',
+                    corrigirSLA: location.state.corrigirSLA ?? false
+                } 
+            });
+        }
+    };
+
+    const handleDeletePeca = async (id) => {
+        const { error } = await deletePeca(id);
+        if (error) alert('Erro ao remover peça: ' + error.message);
     };
 
     const equipsNoEstoque = equipamentos.filter(e => !e.maquina_id);
@@ -815,7 +1221,14 @@ const Ativos = () => {
                         <Wrench size={16} /> Assistente de O.S. #{location.state.reabrirOS} ativo (Você pode fechar a OS após adicionar as peças)
                     </span>
                     <button 
-                        onClick={() => navigate('/manutencao', { state: { reabrirOS: location.state.reabrirOS } })}
+                        onClick={() => navigate('/manutencao', { 
+                            state: { 
+                                reabrirOS: location.state.reabrirOS,
+                                anotacoes: location.state.anotacoes || '',
+                                justificativa: location.state.justificativa || '',
+                                corrigirSLA: location.state.corrigirSLA ?? false
+                            } 
+                        })}
                         className="bg-white px-3 py-1.5 rounded-lg shadow-sm text-blue-600 font-bold hover:bg-blue-100 transition-colors"
                     >
                         Voltar à OS e Concluir
@@ -872,6 +1285,7 @@ const Ativos = () => {
                             nivel={0}
                             maquinas={maquinas}
                             equipamentos={equipamentos}
+                            pecas={pecas}
                             produtos={produtos}
                             searchTerm={searchTerm}
                             onAddFilho={(pai) => setModalSetor({ modo: 'novo', pai })}
@@ -885,6 +1299,9 @@ const Ativos = () => {
                             onDesmontarEquipamento={handleDesmontar}
                             onImprimirEtiqueta={(maq) => setModalEtiqueta(maq)}
                             onUpdateMaquina={updateMaquinaProd || updateMaquina}
+                            onNovaPeca={(maqId, eqId) => setModalPeca({ modo: 'novo', maquinaId: maqId, equipamentoId: eqId })}
+                            onEditarPeca={(peca) => setModalPeca({ modo: 'editar', pecaEdit: peca })}
+                            onDeletePeca={handleDeletePeca}
                         />
                     ))
                 )}
@@ -952,8 +1369,23 @@ const Ativos = () => {
                     equipEdit={modalEquip.equipEdit}
                     maquinaId={modalEquip.maquinaId}
                     maquinas={maquinas}
+                    equipamentos={equipamentos}
+                    pecas={pecas}
                     onSalvar={handleSalvarEquipamento}
                     onFechar={() => setModalEquip(null)}
+                />
+            )}
+
+            {modalPeca && (
+                <ModalPeca
+                    modo={modalPeca.modo}
+                    pecaEdit={modalPeca.pecaEdit}
+                    maquinaId={modalPeca.maquinaId}
+                    maquinas={maquinas}
+                    equipamentoId={modalPeca.equipamentoId}
+                    equipamentos={equipamentos}
+                    onSalvar={handleSalvarPeca}
+                    onFechar={() => setModalPeca(null)}
                 />
             )}
 

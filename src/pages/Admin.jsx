@@ -33,7 +33,8 @@ const Admin = () => {
     const [formData, setFormData] = useState({
         nome: '', funcao: '', turno: '', produtividadeBase: '',
         tipoComissao: 'INDIVIDUAL', alvoComissao: '',
-        perfil: 'APENAS REGISTRO', login: '', senha: ''
+        perfil: 'APENAS REGISTRO', login: '', senha: '',
+        maquinaPreferencialId: '', produtoPreferencialId: '', turnoPreferencialId: ''
     });
 
     const [newProd, setNewProd] = useState({ nome: '', tipo: '', divisor: '100' });
@@ -66,7 +67,8 @@ const Admin = () => {
         setFormData({
             nome: '', funcao: '', turno: turnos[0]?.id || '', produtividadeBase: '0',
             tipoComissao: 'INDIVIDUAL', alvoComissao: '',
-            perfil: 'APENAS REGISTRO', login: '', senha: ''
+            perfil: 'APENAS REGISTRO', login: '', senha: '',
+            maquinaPreferencialId: '', produtoPreferencialId: '', turnoPreferencialId: ''
         });
         setIsModalOpen(true);
     };
@@ -82,7 +84,10 @@ const Admin = () => {
             alvoComissao: op.alvo_comissao || '',
             perfil: op.perfil === 'OPERADOR' && !op.login ? 'APENAS REGISTRO' : (op.perfil || 'OPERADOR'),
             login: op.login || '',
-            senha: op.senha || ''
+            senha: op.senha || '',
+            maquinaPreferencialId: op.maquina_preferencial_id || '',
+            produtoPreferencialId: op.produto_preferencial_id || '',
+            turnoPreferencialId: op.turno_preferencial_id || ''
         });
         setIsModalOpen(true);
     };
@@ -99,7 +104,10 @@ const Admin = () => {
                 login: (formData.perfil === 'APENAS REGISTRO' || !formData.login) ? null : formData.login.trim().toLowerCase(),
                 senha: (formData.perfil === 'APENAS REGISTRO' || !formData.senha) ? null : formData.senha.trim(),
                 produtividadeBase: parseFloat(formData.produtividadeBase) || 0,
-                perfil: formData.perfil === 'APENAS REGISTRO' ? 'OPERADOR' : formData.perfil 
+                perfil: formData.perfil === 'APENAS REGISTRO' ? 'OPERADOR' : formData.perfil,
+                maquina_preferencial_id: formData.maquinaPreferencialId || null,
+                produto_preferencial_id: formData.produtoPreferencialId || null,
+                turno_preferencial_id: formData.turnoPreferencialId || null
             };
             let res = editingId ? await updateOperador(editingId, payload) : await addOperador(payload);
             if (res.error) alert(`Erro: ${res.error.message}`);
@@ -488,6 +496,81 @@ const Admin = () => {
                                         />
                                     </div>
                                 </div>
+
+                                {/* Campo condicional: Máquina alvo */}
+                                {formData.tipoComissao === 'MAQUINA' && (
+                                    <div>
+                                        <label className="block text-[10px] font-bold text-slate-500 mb-1 uppercase">Qual Máquina?</label>
+                                        <select
+                                            className="input-field text-sm"
+                                            value={formData.alvoComissao}
+                                            onChange={e => setFormData({...formData, alvoComissao: e.target.value})}
+                                            required
+                                        >
+                                            <option value="">Selecione a máquina...</option>
+                                            {maqs?.map(m => <option key={m.id} value={m.id}>{m.nome}</option>)}
+                                        </select>
+                                    </div>
+                                )}
+
+                                {/* Campo condicional: Setor alvo */}
+                                {formData.tipoComissao === 'SETOR' && (
+                                    <div>
+                                        <label className="block text-[10px] font-bold text-slate-500 mb-1 uppercase">Qual Setor?</label>
+                                        <input
+                                            type="text"
+                                            className="input-field text-sm"
+                                            placeholder="Nome do setor..."
+                                            value={formData.alvoComissao}
+                                            onChange={e => setFormData({...formData, alvoComissao: e.target.value.toUpperCase()})}
+                                        />
+                                    </div>
+                                )}
+                            </div>
+
+                            {/* NOVOS CAMPOS: Preferências do Operador */}
+                            <div className="p-4 bg-emerald-50/50 rounded-xl border border-emerald-100 space-y-4">
+                                <h4 className="text-xs font-bold text-emerald-500 uppercase tracking-widest flex items-center gap-2">
+                                    <Cog className="w-3 h-3" /> Preferências (Automação Mobile)
+                                </h4>
+                                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                                    <div>
+                                        <label className="block text-[10px] font-bold text-slate-500 mb-1 uppercase">Máquina Padrão</label>
+                                        <select
+                                            className="input-field text-sm"
+                                            value={formData.maquinaPreferencialId}
+                                            onChange={e => setFormData({...formData, maquinaPreferencialId: e.target.value})}
+                                        >
+                                            <option value="">Nenhuma / Manual</option>
+                                            {maqs?.map(m => <option key={m.id} value={m.id}>{m.nome}</option>)}
+                                        </select>
+                                    </div>
+                                    <div>
+                                        <label className="block text-[10px] font-bold text-slate-500 mb-1 uppercase">Produto Padrão</label>
+                                        <select
+                                            className="input-field text-sm"
+                                            value={formData.produtoPreferencialId}
+                                            onChange={e => setFormData({...formData, produtoPreferencialId: e.target.value})}
+                                        >
+                                            <option value="">Nenhum / Indefinido</option>
+                                            {produtos?.map(p => <option key={p.id} value={p.id}>{p.nome}</option>)}
+                                        </select>
+                                    </div>
+                                    <div>
+                                        <label className="block text-[10px] font-bold text-slate-500 mb-1 uppercase">Turno Padrão</label>
+                                        <select
+                                            className="input-field text-sm"
+                                            value={formData.turnoPreferencialId}
+                                            onChange={e => setFormData({...formData, turnoPreferencialId: e.target.value})}
+                                        >
+                                            <option value="">Nenhum / Variável</option>
+                                            {turnos?.map(t => <option key={t.id} value={t.id}>{t.nome}</option>)}
+                                        </select>
+                                    </div>
+                                </div>
+                                <p className="text-[9px] text-emerald-600/70 italic">
+                                    * Estes campos serão usados para preencher automaticamente o lançamento quando um supervisor selecionar este operador.
+                                </p>
                             </div>
                         </form>
                         <footer className="p-6 border-t border-slate-100 bg-slate-50 flex justify-end gap-3">

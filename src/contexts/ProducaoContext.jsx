@@ -51,7 +51,7 @@ export const ProducaoProvider = ({ children }) => {
         try {
             // Busca paralela para ser mais rápido
             const [resOp, resMaq, resProd, resTurno, resLanc] = await Promise.all([
-                supabase.from('operadores').select('*').eq('ativo', true).order('nome'),
+                supabase.from('operadores').select('*, maquina_preferencial_id, produto_preferencial_id, turno_preferencial_id').eq('ativo', true).order('nome'),
                 supabase.from('maquinas').select('*').order('nome'),
                 supabase.from('produtos').select('*').order('nome'),
                 supabase.from('turnos').select('*').eq('ativo', true).order('nome'),
@@ -114,7 +114,10 @@ export const ProducaoProvider = ({ children }) => {
 
     // --- Ações de Cadastro ---
     const addOperador = async (novoOperador) => {
-        const { nome, funcao, turno, produtividadeBase, tipoComissao, alvoComissao, login, senha, perfil } = novoOperador;
+        const { 
+            nome, funcao, turno, produtividadeBase, tipoComissao, alvoComissao, login, senha, perfil,
+            maquina_preferencial_id, produto_preferencial_id, turno_preferencial_id 
+        } = novoOperador;
         console.log("Supabase: Inserindo operador...", novoOperador);
         
         const { data, error } = await supabase
@@ -129,6 +132,9 @@ export const ProducaoProvider = ({ children }) => {
                 senha: senha || null,
                 perfil: perfil?.toUpperCase(),
                 turno: turno?.toUpperCase(),
+                maquina_preferencial_id: maquina_preferencial_id || null,
+                produto_preferencial_id: produto_preferencial_id || null,
+                turno_preferencial_id: turno_preferencial_id || null,
                 ativo: true
             }])
             .select();
@@ -143,7 +149,10 @@ export const ProducaoProvider = ({ children }) => {
     };
 
     const updateOperador = async (id, dados) => {
-        const { nome, funcao, turno, produtividadeBase, tipoComissao, alvoComissao, login, senha, perfil } = dados;
+        const { 
+            nome, funcao, turno, produtividadeBase, tipoComissao, alvoComissao, login, senha, perfil,
+            maquina_preferencial_id, produto_preferencial_id, turno_preferencial_id 
+        } = dados;
         console.log("Supabase: Atualizando operador ID:", id, dados);
 
         const { data, error } = await supabase
@@ -157,7 +166,10 @@ export const ProducaoProvider = ({ children }) => {
                 login: login || null,
                 senha: senha || null,
                 perfil: perfil?.toUpperCase(),
-                turno: turno?.toUpperCase()
+                turno: turno?.toUpperCase(),
+                maquina_preferencial_id: maquina_preferencial_id || null,
+                produto_preferencial_id: produto_preferencial_id || null,
+                turno_preferencial_id: turno_preferencial_id || null
             })
             .eq('id', id)
             .select();
@@ -264,6 +276,7 @@ export const ProducaoProvider = ({ children }) => {
             operador_id: parseInt(dados.operadorId), // Atenção: O ID deve vir do form
             maquina_id: dados.maquinaId ? parseInt(dados.maquinaId) : null,
             produto_id: dados.produtoId ? parseInt(dados.produtoId) : null,
+            turno_id: dados.turnoId ? parseInt(dados.turnoId) : null,
             quantidade: parseFloat(dados.quantidade),
             data_registro: new Date().toISOString()
         };

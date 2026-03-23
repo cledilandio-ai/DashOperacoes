@@ -1,5 +1,5 @@
 import React, { useState, useMemo } from 'react';
-import { FileText, Printer, Calendar, Filter, Wrench, BarChart3, TrendingUp, CheckCircle, Clock, User, AlertTriangle } from 'lucide-react';
+import { FileText, Printer, Calendar, Filter, Wrench, BarChart3, TrendingUp, CheckCircle, Clock, User, AlertTriangle, Factory } from 'lucide-react';
 import { useManutencao } from '../contexts/ManutencaoContext';
 import { useIndustria } from '../contexts/IndustriaContext';
 import { useProducao } from '../contexts/ProducaoContext';
@@ -40,7 +40,7 @@ const CabecalhoRelatorio = ({ titulo, subtitulo, filtros, config }) => {
 const Relatorios = () => {
     const { manutencoes = [] } = useManutencao() || {};
     const { maquinas = [] } = useIndustria() || {};
-    const { operadores = [] } = useProducao() || {};
+    const { operadores = [], produtos = [], getRelatorio } = useProducao() || {};
     const { config } = useConfig() || {};
 
     const [tipo, setTipo] = useState('OS');
@@ -51,7 +51,11 @@ const Relatorios = () => {
     const [maquinaFiltro, setMaquinaFiltro] = useState('');
     const [tecnicoFiltro, setTecnicoFiltro] = useState('');
 
+    const [producaoRelatorio, setProducaoRelatorio] = useState([]);
+    const [loadingProducao, setLoadingProducao] = useState(false);
+
     const tecnicos = operadores.filter(op => op.perfil === 'TECNICO' || op.tipo_comissao === 'MANUTENCAO');
+    const operadoresProducao = operadores.filter(op => op.perfil !== 'TECNICO' && op.tipo_comissao !== 'MANUTENCAO');
 
     // ── Filtros de OS ──
     const osFiltradas = useMemo(() => {
@@ -145,6 +149,67 @@ const Relatorios = () => {
         emAndamento: osFiltradas.filter(m => m.status === 'EM_ANDAMENTO').length,
     }), [osFiltradas]);
 
+    // ── Produtividade da Produção ──
+    React.useEffect(() => {
+        if (tipo === 'PRODUCAO' && dataInicio && dataFim) {
+            setLoadingProducao(true);
+            getRelatorio(dataInicio, dataFim).then(data => {
+                setProducaoRelatorio(data || []);
+                setLoadingProducao(false);
+            });
+        } else {
+            setProducaoRelatorio([]);
+        }
+    }, [tipo, dataInicio, dataFim, getRelatorio]);
+
+    const produtividadeProducao = useMemo(() => {
+        if (!producaoRelatorio || producaoRelatorio.length === 0) return [];
+        
+        const map = {};
+        producaoRelatorio.forEach(lanc => {
+            const opId = lanc.operador_id;
+            
+            if (tecnicoFiltro && opId !== parseInt(tecnicoFiltro)) return;
+            
+            if (!map[opId]) {
+                const op = operadores.find(o => o.id === opId);
+                map[opId] = {
+                    id: opId,
+                    nome: lanc.operadores?.nome || op?.nome || 'N/D',
+                    funcao: lanc.operadores?.funcao || op?.funcao || '',
+                    produtividadeBase: parseFloat(lanc.operadores?.produtividade_base) || parseFloat(op?.produtividade_base) || 0,
+                    totalQuantidade: 0,
+                    totalBases: 0,
+                    lancamentos: []
+                };
+            }
+            
+            let divisor = 100;
+            if (lanc.produto_id) {
+                 const p = produtos.find(prod => prod.id === lanc.produto_id);
+                 if (p && p.divisor) divisor = parseFloat(p.divisor);
+            }
+            
+            const base = lanc.quantidade / divisor;
+            
+            map[opId].totalQuantidade += lanc.quantidade;
+            map[opId].totalBases += base;
+            map[opId].lancamentos.push({
+                ...lanc,
+                divisor,
+                baseGerada: base
+            });
+        });
+
+        return Object.values(map).map(op => ({
+            ...op,
+            // Aqui aplicamos a % de bônus sobre as bases (ex: 10 bases * (3 / 100) = Bônus em R$?)
+            // Mas, em DashOperacoes, % do funcionario como produtividade Base -> Ex: 25 -> dividimos? Não, lá era % ou valor? 
+            // Usaremos * (op.produtividadeBase / 100) como sugerido, pois % é o padrao no sistema.
+            bonusProjetado: op.totalBases * (op.produtividadeBase / 100)
+        })).sort((a, b) => b.totalBases - a.totalBases);
+    }, [producaoRelatorio, tecnicoFiltro, produtos, operadores]);
+
     const filtroTexto = [
         dataInicio && `De: ${new Date(dataInicio + 'T12:00:00').toLocaleDateString('pt-BR')}`,
         dataFim && `Até: ${new Date(dataFim + 'T12:00:00').toLocaleDateString('pt-BR')}`,
@@ -190,6 +255,10 @@ const Relatorios = () => {
                             className={`flex items-center gap-2 px-4 py-2 rounded-lg font-bold text-sm border transition-all ${tipo === 'PRODUTIVIDADE' ? 'bg-emerald-600 text-white border-emerald-600 shadow-md' : 'bg-white text-slate-500 border-slate-200 hover:bg-slate-50'}`}>
                             <TrendingUp size={15} /> Produtividade dos Técnicos
                         </button>
+                        <button onClick={() => setTipo('PRODUCAO')}
+                            className={`flex items-center gap-2 px-4 py-2 rounded-lg font-bold text-sm border transition-all ${tipo === 'PRODUCAO' ? 'bg-blue-600 text-white border-blue-600 shadow-md' : 'bg-white text-slate-500 border-slate-200 hover:bg-slate-50'}`}>
+                            <Factory size={15} /> Produtividade da Produção
+                        </button>
                     </div>
 
                     {/* Campos comuns */}
@@ -203,10 +272,13 @@ const Relatorios = () => {
                             <input type="date" className="input-field" value={dataFim} onChange={e => setDataFim(e.target.value)} />
                         </div>
                         <div>
-                            <label className="label">Técnico</label>
+                            <label className="label">{tipo === 'PRODUCAO' ? 'Operador' : 'Técnico'}</label>
                             <select className="input-field" value={tecnicoFiltro} onChange={e => setTecnicoFiltro(e.target.value)}>
-                                <option value="">Todos os Técnicos</option>
-                                {tecnicos.map(t => <option key={t.id} value={t.id}>{t.nome}</option>)}
+                                <option value="">Todos</option>
+                                {tipo === 'PRODUCAO' 
+                                    ? operadoresProducao.map(o => <option key={o.id} value={o.id}>{o.nome}</option>)
+                                    : tecnicos.map(t => <option key={t.id} value={t.id}>{t.nome}</option>)
+                                }
                             </select>
                         </div>
 
@@ -266,6 +338,20 @@ const Relatorios = () => {
                             { label: 'Total de OS no período', valor: osFiltradaProdut.length, cor: 'text-slate-800' },
                             { label: 'OS Concluídas', valor: osFiltradaProdut.filter(m => m.status === 'CONCLUIDA').length, cor: 'text-emerald-600' },
                             { label: 'Técnicos Ativos', valor: produtividade.length, cor: 'text-blue-600' },
+                        ].map(({ label, valor, cor }) => (
+                            <div key={label} className="px-5 py-4">
+                                <p className="text-xs text-slate-500 uppercase tracking-wide">{label}</p>
+                                <p className={`text-3xl font-black ${cor}`}>{valor}</p>
+                            </div>
+                        ))}
+                    </div>
+                )}
+                {tipo === 'PRODUCAO' && (
+                    <div className="grid grid-cols-2 md:grid-cols-3 divide-x divide-y md:divide-y-0 divide-slate-100">
+                        {[
+                            { label: 'Total Lançamentos', valor: producaoRelatorio.length, cor: 'text-slate-800' },
+                            { label: 'Total Bases Geradas', valor: produtividadeProducao.reduce((acc, op) => acc + op.totalBases, 0).toFixed(1), cor: 'text-blue-600' },
+                            { label: 'Operadores Ativos', valor: produtividadeProducao.length, cor: 'text-emerald-600' },
                         ].map(({ label, valor, cor }) => (
                             <div key={label} className="px-5 py-4">
                                 <p className="text-xs text-slate-500 uppercase tracking-wide">{label}</p>
@@ -512,6 +598,123 @@ const Relatorios = () => {
                                                 </td>
                                                 <td className="px-4 py-2 text-center text-xs">
                                                     <span dangerouslySetInnerHTML={{ __html: justificativa }}></span>
+                                                </td>
+                                            </tr>
+                                        );
+                                    })}
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </>
+            )}
+
+            {/* ── Tabela de Produtividade da Produção ── */}
+            {tipo === 'PRODUCAO' && (
+                <>
+                    {/* Ranking por Operador */}
+                    <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden mb-6">
+                        <div className="px-5 py-3 border-b border-slate-100 flex items-center gap-2 bg-blue-50 print:bg-white print:border-none">
+                            <Factory size={16} className="text-blue-600" />
+                            <span className="font-bold text-slate-700">Desempenho da Produção — No Período</span>
+                        </div>
+                        <div className="overflow-x-auto">
+                            <table className="w-full text-sm text-left border-collapse">
+                                <thead className="text-xs text-slate-500 uppercase bg-slate-50 border-b border-slate-200">
+                                    <tr>
+                                        <th className="px-4 py-3">#</th>
+                                        <th className="px-4 py-3">Operador</th>
+                                        <th className="px-4 py-3 text-center">Produção Bruta (Qtd)</th>
+                                        <th className="px-4 py-3 text-center">Bases Geradas</th>
+                                        <th className="px-4 py-3 text-center">% Partic. (Bônus Máx)</th>
+                                        <th className="px-4 py-3 text-right">Bônus Projetado</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {produtividadeProducao.length === 0 ? (
+                                        <tr><td colSpan={6} className="px-4 py-10 text-center text-slate-400">
+                                            Nenhum lançamento encontrado para o filtro selecionado.
+                                        </td></tr>
+                                    ) : produtividadeProducao.map((op, i) => (
+                                        <tr key={op.id} className="border-b border-slate-100 hover:bg-slate-50 transition-colors">
+                                            <td className="px-4 py-3 font-black text-slate-400 text-xs">{i + 1}º</td>
+                                            <td className="px-4 py-3 font-bold text-slate-800">
+                                                {op.nome}
+                                                {op.funcao && <div className="text-[10px] text-slate-400 font-normal uppercase">{op.funcao}</div>}
+                                            </td>
+                                            <td className="px-4 py-3 text-center font-bold text-slate-700">
+                                                {op.totalQuantidade.toLocaleString('pt-BR')}
+                                            </td>
+                                            <td className="px-4 py-3 text-center font-black text-blue-600 text-lg">
+                                                {op.totalBases.toLocaleString('pt-BR', { minimumFractionDigits: 1, maximumFractionDigits: 1 })}
+                                            </td>
+                                            <td className="px-4 py-3 text-center font-bold text-slate-500">
+                                                {op.produtividadeBase}%
+                                            </td>
+                                            <td className="px-4 py-3 text-right">
+                                                {op.produtividadeBase > 0 ? (
+                                                    <span className="font-black text-emerald-700 text-lg">
+                                                        R$ {op.bonusProjetado.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                                                    </span>
+                                                ) : (
+                                                    <span className="text-xs font-bold text-slate-400 italic">Sem Participação</span>
+                                                )}
+                                            </td>
+                                        </tr>
+                                    ))}
+                                </tbody>
+                            </table>
+                        </div>
+                        <div className="bg-blue-50 border-t border-blue-100 p-4 print:p-2 text-xs text-blue-800 flex items-start gap-2">
+                            <CheckCircle size={14} className="mt-0.5 shrink-0" />
+                            <span>
+                                <strong>Regra de Produtividade Baseada em Divisor:</strong> A Produção Bruta é dividida pelo Divisor de cada produto configurado no sistema gerando a <strong>Base</strong>.
+                                <br className="hidden md:block"/>
+                                <em>Exemplo: Produzir 1000 itens (Divisor 100) = 10 Bases. O Bônus (R$) = Total de Bases × % de Participação do Operador.</em>
+                            </span>
+                        </div>
+                    </div>
+
+                    {/* Detalhamento dos Lançamentos */}
+                    <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
+                        <div className="px-5 py-3 border-b border-slate-100 bg-slate-50">
+                            <span className="font-bold text-slate-700 text-sm">Detalhamento dos Lançamentos (Produção)</span>
+                            <span className="ml-3 text-xs text-slate-400">{producaoRelatorio.length} registro(s)</span>
+                        </div>
+                        <div className="overflow-x-auto">
+                            <table className="w-full text-sm text-left border-collapse">
+                                <thead className="text-xs text-slate-500 uppercase bg-slate-50 border-b border-slate-200">
+                                    <tr>
+                                        <th className="px-4 py-2">Data/Hora</th>
+                                        <th className="px-4 py-2">Operador</th>
+                                        <th className="px-4 py-2">Máquina</th>
+                                        <th className="px-4 py-2">Produto</th>
+                                        <th className="px-4 py-2 text-center">Quantidade</th>
+                                        <th className="px-4 py-2 text-center">Divisor</th>
+                                        <th className="px-4 py-2 text-center">Base Gerada</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {producaoRelatorio.map(lanc => {
+                                        let divisor = 100;
+                                        if (lanc.produto_id) {
+                                            const p = produtos.find(prod => prod.id === lanc.produto_id);
+                                            if (p && p.divisor) divisor = parseFloat(p.divisor);
+                                        }
+                                        const base = lanc.quantidade / divisor;
+
+                                        return (
+                                            <tr key={lanc.id} className="border-b border-slate-100 hover:bg-slate-50">
+                                                <td className="px-4 py-2 text-xs text-slate-500">
+                                                    {new Date(lanc.data_registro).toLocaleString('pt-BR', { dateStyle: 'short', timeStyle: 'short' })}
+                                                </td>
+                                                <td className="px-4 py-2 text-xs font-bold uppercase">{lanc.operadores?.nome || 'N/D'}</td>
+                                                <td className="px-4 py-2 text-xs text-slate-600">{lanc.maquinas?.nome || '-'}</td>
+                                                <td className="px-4 py-2 text-xs font-bold text-blue-700">{produtos.find(prod => prod.id === lanc.produto_id)?.nome || '-'}</td>
+                                                <td className="px-4 py-2 text-center font-bold text-slate-700">{lanc.quantidade}</td>
+                                                <td className="px-4 py-2 text-center text-xs text-slate-400">÷ {divisor}</td>
+                                                <td className="px-4 py-2 text-center font-black text-blue-600">
+                                                    +{base.toLocaleString('pt-BR', { minimumFractionDigits: 1, maximumFractionDigits: 1 })}
                                                 </td>
                                             </tr>
                                         );

@@ -558,7 +558,8 @@ const ModalEtiqueta = ({ maquina, onFechar }) => {
 
     // URL para a qual o QR Code vai apontar - Prioriza config do Admin
     const baseUrl = (config?.url_sistema || window.location.origin).replace(/\/$/, '').replace(/\/login$/, '');
-    const qrUrl = `${baseUrl}/producao?solicitar_os=${maquina.id}`;
+    // Aponta primeiro para o login para garantir a tela de autenticação
+    const qrUrl = `${baseUrl}/login?to=${encodeURIComponent(`/producao?solicitar_os=${maquina.id}`)}`;
 
     return (
         <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-[110] p-4" onClick={onFechar}>

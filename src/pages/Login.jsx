@@ -28,7 +28,15 @@ const Login = () => {
         if (res.success) {
             const perfilUsuario = res.user.perfil;
             
-            // Verifica se há uma página de origem salva no estado do roteador (ex: vindo de um QR Code)
+            // Prioridade 1: Parâmetro "to" na URL (vinda de QR Code externo)
+            const queryParams = new URLSearchParams(location.search);
+            const toParam = queryParams.get('to');
+            if (toParam) {
+                navigate(toParam, { replace: true });
+                return;
+            }
+
+            // Prioridade 2: Estado "from" do roteador (vinda de redirecionamento interno por ProtectedRoute)
             const fromPath = location.state?.from?.pathname;
             const fromSearch = location.state?.from?.search || '';
             

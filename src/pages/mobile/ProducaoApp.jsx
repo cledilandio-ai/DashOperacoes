@@ -13,7 +13,17 @@ const ProducaoApp = () => {
 
     const [modalOpen, setModalOpen] = useState(false);
     const [modalOSOpen, setModalOSOpen] = useState(false);
+    const [scannerOpen, setScannerOpen] = useState(false);
     const [loading, setLoading] = useState(false);
+
+    const [barcodeDetector, setBarcodeDetector] = useState(null);
+
+    useEffect(() => {
+        if ('BarcodeDetector' in window) {
+            // eslint-disable-next-line no-undef
+            setBarcodeDetector(new BarcodeDetector({ formats: ['qr_code'] }));
+        }
+    }, []);
 
     // Form Produção
     const [operadorId, setOperadorId] = useState('');
@@ -24,7 +34,7 @@ const ProducaoApp = () => {
     // Form O.S.
     const [osForm, setOsForm] = useState({
         maquina_id: '',
-        descricao: '',
+        descricao_problema: '',
         prioridade: 'MEDIA',
         tecnico_id: null
     });
@@ -85,7 +95,7 @@ const ProducaoApp = () => {
 
     const handleAbrirOS = async (e) => {
         e.preventDefault();
-        if (!osForm.maquina_id || !osForm.descricao) return alert("Preencha todos os campos!");
+        if (!osForm.maquina_id || !osForm.descricao_problema) return alert("Preencha todos os campos!");
 
         setLoading(true);
         const { error } = await abrirOS({
@@ -98,11 +108,11 @@ const ProducaoApp = () => {
         setLoading(false);
 
         if (error) {
-            alert('Erro ao abrir OS: ' + error.message);
+            alert('Erro ao abrir OS: ' + (error.message || JSON.stringify(error)));
         } else {
             alert('O.S. Aberta com Sucesso! A manutenção foi notificada.');
             setModalOSOpen(false);
-            setOsForm({ maquina_id: '', descricao: '', prioridade: 'MEDIA' });
+            setOsForm({ maquina_id: '', descricao_problema: '', prioridade: 'MEDIA', tecnico_id: null });
         }
     };
 
@@ -124,24 +134,15 @@ const ProducaoApp = () => {
             <div className="p-4 space-y-6">
                 {/* Ação Principal: Ler QR Code */}
                 <button 
-                    onClick={() => alert("Dica: Use a câmera do seu celular para escanear a etiqueta da máquina.")}
+                    onClick={() => setScannerOpen(true)}
                     className="w-full aspect-square bg-white rounded-3xl shadow-xl border-4 border-blue-100 flex flex-col items-center justify-center gap-4 active:scale-95 transition-transform"
                 >
                     <div className="p-6 bg-blue-50 rounded-full text-blue-600">
                         <QrCode className="w-16 h-16" />
                     </div>
                     <div className="text-center">
-                        <label className="cursor-pointer">
-                            <h2 className="text-xl font-bold text-slate-800">Ler QR Code</h2>
-                            <p className="text-slate-500 text-sm">Abrir OS na Máquina</p>
-                            <input 
-                                type="file" 
-                                accept="image/*" 
-                                capture="environment" 
-                                className="hidden" 
-                                onChange={(e) => alert("Escaneamento nativo em desenvolvimento. Por favor, use a câmera do celular diretamente para ler a etiqueta.")}
-                            />
-                        </label>
+                        <h2 className="text-xl font-bold text-slate-800">Ler QR Code</h2>
+                        <p className="text-slate-500 text-sm">Escaneie a Máquina para abrir O.S.</p>
                     </div>
                 </button>
 
@@ -352,8 +353,8 @@ const ProducaoApp = () => {
                                 <textarea
                                     className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl font-medium text-slate-700 h-24 resize-none"
                                     placeholder="Ex: Motor fazendo barulho, correia solta..."
-                                    value={osForm.descricao}
-                                    onChange={e => setOsForm({ ...osForm, descricao: e.target.value.toUpperCase() })}
+                                    value={osForm.descricao_problema}
+                                    onChange={e => setOsForm({ ...osForm, descricao_problema: e.target.value.toUpperCase() })}
                                     required
                                 />
                             </div>
@@ -388,6 +389,155 @@ const ProducaoApp = () => {
                     </div>
                 </div>
             )}
+            {/* Modal Scanner QR */}
+            {scannerOpen && (
+                <ModalScanner
+                    onScan={(id) => {
+                        setOsForm(prev => ({ ...prev, maquina_id: id }));
+                        setModalOSOpen(true);
+                        setScannerOpen(false);
+                    }}
+                    onClose={() => setScannerOpen(false)}
+                    detector={barcodeDetector}
+                />
+            )}
+        </div>
+    );
+};
+
+const ModalScanner = ({ onScan, onClose, detector }) => {
+    const videoRef = React.useRef(null);
+    const [status, setStatus] = useState('Iniciando câmera...');
+    const [hasPermission, setHasPermission] = useState(true);
+
+    React.useEffect(() => {
+        let stream = null;
+        let interval = null;
+
+        const startCamera = async () => {
+            try {
+                stream = await navigator.mediaDevices.getUserMedia({ 
+                    video: { facingMode: 'environment', width: { ideal: 640 }, height: { ideal: 640 } } 
+                });
+                if (videoRef.current) {
+                    videoRef.current.srcObject = stream;
+                    setStatus('Buscando QR Code...');
+                }
+
+                if (detector) {
+                    interval = setInterval(async () => {
+                        if (videoRef.current && videoRef.current.readyState === 4) {
+                            try {
+                                const barcodes = await detector.detect(videoRef.current);
+                                if (barcodes.length > 0) {
+                                    const rawValue = barcodes[0].rawValue;
+                                    // Tenta extrair maquina_id do link (ex: ...?solicitar_os=10)
+                                    const url = new URL(rawValue);
+                                    const machineId = url.searchParams.get('solicitar_os');
+                                    if (machineId) {
+                                        onScan(machineId);
+                                    } else {
+                                        // Se não for link padrão, talvez seja o ID puro
+                                        onScan(rawValue);
+                                    }
+                                }
+                            } catch (e) {
+                                console.error('Erro detecção:', e);
+                            }
+                        }
+                    }, 500);
+                }
+            } catch (err) {
+                console.error('Erro câmera:', err);
+                setHasPermission(false);
+                setStatus('Erro ao acessar câmera. Verifique as permissões.');
+            }
+        };
+
+        startCamera();
+
+        return () => {
+            if (stream) stream.getTracks().forEach(track => track.stop());
+            if (interval) clearInterval(interval);
+        };
+    }, [detector, onScan]);
+
+    return (
+        <div className="fixed inset-0 bg-black z-[200] flex flex-col items-center justify-between p-6">
+            <div className="w-full flex justify-between items-center text-white">
+                <h3 className="font-bold">Scanner QR Code</h3>
+                <button onClick={onClose} className="p-2 bg-white/10 rounded-full"><X className="w-6 h-6" /></button>
+            </div>
+
+            <div className="relative w-full max-w-sm aspect-square rounded-3xl overflow-hidden border-4 border-blue-500 shadow-[0_0_50px_rgba(59,130,246,0.5)]">
+                <video 
+                    ref={videoRef} 
+                    autoPlay 
+                    playsInline 
+                    className="w-full h-full object-cover"
+                />
+                
+                {/* Mira do Scanner */}
+                <div className="absolute inset-0 flex items-center justify-center p-12 pointer-events-none">
+                    <div className="w-full h-full border-2 border-white/50 rounded-2xl relative">
+                        <div className="absolute top-0 left-0 w-8 h-8 border-t-4 border-l-4 border-blue-500 -mt-1 -ml-1"></div>
+                        <div className="absolute top-0 right-0 w-8 h-8 border-t-4 border-r-4 border-blue-500 -mt-1 -mr-1"></div>
+                        <div className="absolute bottom-0 left-0 w-8 h-8 border-b-4 border-l-4 border-blue-500 -mb-1 -ml-1"></div>
+                        <div className="absolute bottom-0 right-0 w-8 h-8 border-b-4 border-r-4 border-blue-500 -mb-1 -mr-1"></div>
+                        
+                        {/* Linha de Scanner Animada */}
+                        <div className="absolute top-0 left-0 right-0 h-0.5 bg-blue-400 shadow-[0_0_10px_#60a5fa] animate-scan-line"></div>
+                    </div>
+                </div>
+
+                {!hasPermission && (
+                    <div className="absolute inset-0 bg-slate-900/90 flex flex-col items-center justify-center p-8 text-center text-white gap-4">
+                        <AlertTriangle className="w-12 h-12 text-amber-500" />
+                        <p className="font-bold">Acesso à câmera negado.</p>
+                        <p className="text-xs opacity-70">Por favor, permita o acesso à câmera nas configurações do seu navegador para usar o scanner.</p>
+                    </div>
+                )}
+            </div>
+
+            <div className="text-center w-full max-w-sm space-y-4">
+                <p className="text-blue-400 font-bold animate-pulse">{status}</p>
+                
+                {/* Entrada Manual de Backup */}
+                <div className="bg-white/10 p-4 rounded-2xl backdrop-blur-md">
+                    <p className="text-[10px] text-white/60 mb-2 uppercase font-bold">Ou digite o ID / TAG da máquina:</p>
+                    <div className="flex gap-2">
+                        <input 
+                            type="text" 
+                            id="manual-id"
+                            placeholder="Ex: 10 ou MAQ-01"
+                            className="flex-1 bg-white/20 border border-white/30 rounded-lg px-3 py-2 text-white outline-none focus:ring-2 focus:ring-blue-500"
+                        />
+                        <button 
+                            onClick={() => {
+                                const val = document.getElementById('manual-id').value;
+                                if (val) onScan(val);
+                            }}
+                            className="bg-blue-600 text-white px-4 py-2 rounded-lg font-bold"
+                        >
+                            OK
+                        </button>
+                    </div>
+                </div>
+
+                <p className="text-[10px] text-white/40">Aponte para a etiqueta QR na lateral da máquina.</p>
+            </div>
+
+            <style>{`
+                @keyframes scan-line {
+                    0% { top: 0%; opacity: 0; }
+                    10% { opacity: 1; }
+                    90% { opacity: 1; }
+                    100% { top: 100%; opacity: 0; }
+                }
+                .animate-scan-line {
+                    animation: scan-line 2.5s infinite linear;
+                }
+            `}</style>
         </div>
     );
 };

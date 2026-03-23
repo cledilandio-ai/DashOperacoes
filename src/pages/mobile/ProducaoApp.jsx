@@ -278,51 +278,48 @@ const ProducaoApp = () => {
                                 </div>
                             )}
 
-                            {/* Campos informativos auto-preenchidos */}
-                            <div className="grid grid-cols-3 gap-2">
-                                <div className="bg-slate-50 p-3 rounded-xl border border-slate-100">
-                                    <span className="text-[10px] font-bold text-slate-400 uppercase block">Máquina</span>
-                                    <span className="text-xs font-bold text-slate-700 truncate block">
-                                        {maquinaAtual?.nome || '—'}
-                                    </span>
-                                </div>
-                                <div className="bg-slate-50 p-3 rounded-xl border border-slate-100">
-                                    <span className="text-[10px] font-bold text-slate-400 uppercase block">Produto</span>
-                                    <span className="text-xs font-bold text-slate-700 truncate block">
-                                        {produtoAtual?.nome || 'Geral'}
-                                    </span>
-                                </div>
-                                <div className="bg-slate-50 p-3 rounded-xl border border-slate-100">
-                                    <span className="text-[10px] font-bold text-slate-400 uppercase block">Turno</span>
-                                    <span className="text-xs font-bold text-slate-700 truncate block">
-                                        {turnoAtual?.nome || '—'}
-                                    </span>
-                                </div>
+                            {/* Máquina - Obrigatória, sempre visível */}
+                            <div>
+                                <label className="block text-sm font-bold text-slate-700 mb-1">
+                                    Máquina / Linha <span className="text-red-500">*</span>
+                                </label>
+                                <select
+                                    className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl font-bold text-slate-700"
+                                    value={maquinaId}
+                                    onChange={e => setMaquinaId(e.target.value)}
+                                    required
+                                >
+                                    <option value="">Selecione a Máquina...</option>
+                                    {maquinas.map(m => <option key={m.id} value={m.id}>{m.nome}</option>)}
+                                </select>
                             </div>
 
-                            {/* Troca manual se necessário */}
-                            <details className="group">
-                                <summary className="text-xs text-slate-400 cursor-pointer hover:text-slate-600 font-bold text-center py-1 list-none">
-                                    ▼ Ajuste manual (se necessário)
-                                </summary>
-                                <div className="mt-3 space-y-2 p-3 bg-slate-50 rounded-xl border border-slate-100">
-                                    <select className="w-full p-2 bg-white border border-slate-200 rounded-lg text-sm font-bold text-slate-700"
-                                        value={maquinaId} onChange={e => setMaquinaId(e.target.value)}>
-                                        <option value="">Trocar Máquina...</option>
-                                        {maquinas.map(m => <option key={m.id} value={m.id}>{m.nome}</option>)}
-                                    </select>
-                                    <select className="w-full p-2 bg-white border border-slate-200 rounded-lg text-sm font-bold text-slate-700"
-                                        value={produtoId} onChange={e => setProdutoId(e.target.value)}>
-                                        <option value="">Trocar Produto...</option>
-                                        {produtos.map(p => <option key={p.id} value={p.id}>{p.nome}</option>)}
-                                    </select>
-                                    <select className="w-full p-2 bg-white border border-slate-200 rounded-lg text-sm font-bold text-slate-700"
-                                        value={turnoId} onChange={e => setTurnoId(e.target.value)}>
-                                        <option value="">Trocar Turno...</option>
-                                        {turnos.map(t => <option key={t.id} value={t.id}>{t.nome}</option>)}
-                                    </select>
-                                </div>
-                            </details>
+                            {/* Produto */}
+                            <div>
+                                <label className="block text-sm font-bold text-slate-700 mb-1">Produto</label>
+                                <select
+                                    className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl font-medium text-slate-700 text-sm"
+                                    value={produtoId}
+                                    onChange={e => setProdutoId(e.target.value)}
+                                >
+                                    <option value="">Geral / Indefinido</option>
+                                    {produtos.map(p => <option key={p.id} value={p.id}>{p.nome}</option>)}
+                                </select>
+                            </div>
+
+                            {/* Turno */}
+                            <div>
+                                <label className="block text-sm font-bold text-slate-700 mb-1">Turno</label>
+                                <select
+                                    className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl font-medium text-slate-700 text-sm"
+                                    value={turnoId}
+                                    onChange={e => setTurnoId(e.target.value)}
+                                >
+                                    <option value="">Selecione o Turno...</option>
+                                    {turnos.map(t => <option key={t.id} value={t.id}>{t.nome}</option>)}
+                                </select>
+                            </div>
+
 
                             {/* Quantidade */}
                             <div>

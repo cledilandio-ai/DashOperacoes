@@ -31,6 +31,12 @@ const ProducaoApp = () => {
     const [produtoId, setProdutoId] = useState('');
     const [quantidade, setQuantidade] = useState('');
 
+    // Novos estados de Presets e Segurança
+    const [presetMaquinaId, setPresetMaquinaId] = useState('');
+    const [presetProdutoId, setPresetProdutoId] = useState('');
+    const [mudancaConfirmada, setMudancaConfirmada] = useState(false);
+    const [operadorConfirmado, setOperadorConfirmado] = useState(false);
+
     // Form O.S.
     const [osForm, setOsForm] = useState({
         maquina_id: '',
@@ -53,20 +59,57 @@ const ProducaoApp = () => {
         }
     }, [searchParams, setSearchParams]);
 
+    // Efeito de Preset ao mudar Operador
+    useEffect(() => {
+        if (!operadorId && !user) return;
+        const idParaBuscar = operadorId || user?.id;
+        if (!idParaBuscar) return;
+
+        // Busca o último lançamento DESTE operador no histórico
+        const ultimoLanc = lancamentos.find(l => l.operadorId.toString() === idParaBuscar.toString());
+        
+        if (ultimoLanc) {
+            setMaquinaId(ultimoLanc.maquinaId.toString());
+            setProdutoId(ultimoLanc.produtoId ? ultimoLanc.produtoId.toString() : '');
+            setPresetMaquinaId(ultimoLanc.maquinaId.toString());
+            setPresetProdutoId(ultimoLanc.produtoId ? ultimoLanc.produtoId.toString() : '');
+            setMudancaConfirmada(false); // Reset de confirmação ao mudar operador
+        } else {
+            setMaquinaId('');
+            setProdutoId('');
+            setPresetMaquinaId('');
+            setPresetProdutoId('');
+        }
+    }, [operadorId, user, lancamentos]);
+
     // Auto-selecionar produto ao escolher máquina
     useEffect(() => {
         if (maquinaId) {
             const maq = maquinas.find(m => m.id.toString() === maquinaId.toString());
             if (maq && maq.produto_atual_id) {
                 setProdutoId(maq.produto_atual_id.toString());
-            } else {
-                setProdutoId('');
+            } else if (maquinaId !== presetMaquinaId) {
+                // Se mudou de máquina manual, não limpa o produto se for o preset do produto
+                if (produtoId !== presetProdutoId) setProdutoId('');
             }
         }
-    }, [maquinaId, maquinas]);
+    }, [maquinaId, maquinas, presetMaquinaId, presetProdutoId, produtoId]);
 
     const handleLancar = async (e) => {
         e.preventDefault();
+        
+        // Validação de Segurança (Mudança de Máquina sem Confirmação)
+        if (presetMaquinaId && maquinaId !== presetMaquinaId && !mudancaConfirmada) {
+            alert("⚠️ Atenção: A máquina foi alterada. Por favor, confirme a mudança no botão abaixo do seletor de máquina.");
+            return;
+        }
+
+        // Validação de Segurança (Mudança de Operador sem Confirmação)
+        if (operadorId && operadorId !== user.id && !operadorConfirmado) {
+            alert("⚠️ Atenção: Você está lançando para outro operador. Por favor, confirme no botão abaixo do nome do operador.");
+            return;
+        }
+
         if (!maquinaId || !quantidade) {
             alert("Preencha Máquina e Quantidade!");
             return;
@@ -112,6 +155,10 @@ const ProducaoApp = () => {
         } else {
             alert('O.S. Aberta com Sucesso! A manutenção foi notificada.');
             setModalOSOpen(false);
+            // Reset de segurança
+            setMudancaConfirmada(false);
+            setOperadorConfirmado(false);
+            setOperadorId('');
             setOsForm({ maquina_id: '', descricao_problema: '', prioridade: 'MEDIA', tecnico_id: null });
         }
     };
@@ -239,6 +286,25 @@ const ProducaoApp = () => {
                                             </option>
                                         ))}
                                     </select>
+
+                                    {/* Alerta de Segurança se o operador for alterado */}
+                                    {operadorId && operadorId.toString() !== user.id.toString() && (
+                                        <div className="mt-2 p-3 bg-blue-50 border border-blue-200 rounded-xl flex items-center justify-between animate-in fade-in slide-in-from-top-1">
+                                            <div className="flex items-center gap-2 text-blue-700 text-[10px] font-bold">
+                                                <User className="w-3 h-3" />
+                                                Lançando para outro colaborador
+                                            </div>
+                                            <button 
+                                                type="button"
+                                                onClick={() => setOperadorConfirmado(true)}
+                                                className={`text-[9px] px-3 py-1 rounded-lg font-black transition-colors ${
+                                                    operadorConfirmado ? 'bg-emerald-500 text-white' : 'bg-blue-600 text-white'
+                                                }`}
+                                            >
+                                                {operadorConfirmado ? 'CONFIRMADO ✓' : 'CONFIRMAR'}
+                                            </button>
+                                        </div>
+                                    )}
                                 </div>
                             ) : (
                                 <div className="bg-blue-50 p-3 rounded-xl border border-blue-100 flex items-center justify-between">
@@ -260,6 +326,25 @@ const ProducaoApp = () => {
                                         <option key={m.id} value={m.id}>{m.nome}</option>
                                     ))}
                                 </select>
+
+                                {/* Alerta de Segurança se a máquina for alterada */}
+                                {presetMaquinaId && maquinaId !== presetMaquinaId && (
+                                    <div className="mt-2 p-3 bg-amber-50 border border-amber-200 rounded-xl flex items-center justify-between animate-pulse">
+                                        <div className="flex items-center gap-2 text-amber-700 text-xs font-bold">
+                                            <AlertTriangle className="w-4 h-4" />
+                                            Máquina diferente do habitual!
+                                        </div>
+                                        <button 
+                                            type="button"
+                                            onClick={() => setMudancaConfirmada(true)}
+                                            className={`text-[10px] px-3 py-1 rounded-lg font-black transition-colors ${
+                                                mudancaConfirmada ? 'bg-emerald-500 text-white' : 'bg-amber-600 text-white'
+                                            }`}
+                                        >
+                                            {mudancaConfirmada ? 'CONFIRMADO ✓' : 'CONFIRMAR MUDANÇA'}
+                                        </button>
+                                    </div>
+                                )}
                             </div>
 
                             {/* Produto auto-selecionado (oculto se já definido pela máquina) */}

@@ -100,7 +100,7 @@ const Admin = () => {
                 ...formData,
                 nome: formData.nome.trim().toUpperCase(),
                 funcao: formData.funcao.trim().toUpperCase(),
-                turno: isNaN(formData.turno) ? formData.turno : turnos.find(t => t.id.toString() === formData.turno.toString())?.nome || formData.turno,
+                turno: formData.turnoPreferencialId ? turnos.find(t => t.id.toString() === formData.turnoPreferencialId.toString())?.nome : null,
                 login: (formData.perfil === 'APENAS REGISTRO' || !formData.login) ? null : formData.login.trim().toLowerCase(),
                 senha: (formData.perfil === 'APENAS REGISTRO' || !formData.senha) ? null : formData.senha.trim(),
                 produtividadeBase: parseFloat(formData.produtividadeBase) || 0,
@@ -430,21 +430,14 @@ const Admin = () => {
                             <button onClick={() => setIsModalOpen(false)}><X className="w-6 h-6" /></button>
                         </header>
                         <form onSubmit={handleSaveOperador} className="p-6 space-y-6 max-h-[70vh] overflow-y-auto">
-                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                                <div className="md:col-span-2">
+                            <div className="space-y-4">
+                                <div>
                                     <label className="label-form">Nome Completo</label>
                                     <input type="text" className="input-field" value={formData.nome || ''} onChange={e => setFormData({...formData, nome: e.target.value.toUpperCase()})} required />
                                 </div>
                                 <div>
                                     <label className="label-form">Função / Cargo</label>
                                     <input type="text" className="input-field" value={formData.funcao || ''} onChange={e => setFormData({...formData, funcao: e.target.value.toUpperCase()})} required />
-                                </div>
-                                <div>
-                                    <label className="label-form">Turno</label>
-                                    <select className="input-field" value={formData.turno} onChange={e => setFormData({...formData, turno: e.target.value})}>
-                                        <option value="">Selecione um turno...</option>
-                                        {turnos.map(t => <option key={t.id} value={t.id}>{t.nome}</option>)}
-                                    </select>
                                 </div>
                             </div>
                             
